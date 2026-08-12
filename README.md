@@ -1,5 +1,5 @@
-# wbtool-fiji-plugin
-Fiji plugin for making publication-ready Western blot and other gel figures.
+# GelAnno-fiji-plugin
+Fiji plugin for making traceable publication-ready Western blot and other gel figures.
 
 There are 2 ways to install.
 
