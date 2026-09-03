@@ -1,0 +1,65 @@
+GelAnno Coordinate Log
+Log format version: 1
+Plugin version: 0.8.6
+
+Coordinate convention:
+  Origin: top-left image pixel
+  X direction: right
+  Y direction: down
+  Crop corners: top-left, top-right, bottom-right, bottom-left
+  Angles: degrees clockwise in image coordinates
+
+Global kDa marker sets:
+KDA-001:
+  Source type: kDa marker image
+  Source image: D:\TAU\LCRB\wbtools\Test images\Markers 2026-06-23 12h09m39s.tif
+  Source dimensions: 2125 x 1700 pixels
+  Markers:
+    1. label = 100, x_abs = 1158.000000, y_abs = 783.000000
+    2. label = 70, x_abs = 1161.000000, y_abs = 828.000000
+    3. label = 55, x_abs = 1161.000000, y_abs = 855.000000
+    4. label = 40, x_abs = 1164.000000, y_abs = 900.000000
+    5. label = 35, x_abs = 1152.000000, y_abs = 945.000000
+
+Crops in figure:
+Band 1: a-ELAVL1
+  Source image: D:\TAU\LCRB\wbtools\Test images\Blot 2026-06-23 12h10m17s.tif
+  Source dimensions: 2125 x 1700 pixels
+  Crop origin: x = 1178.812988, y = 892.642273
+  Crop size: width = 346, height = 105 pixels
+  Crop angle: -3.483271 degrees
+  Crop corners:
+    top-left: x = 1178.812988, y = 892.642273
+    top-right: x = 1524.173781, y = 871.620315
+    bottom-right: x = 1530.553277, y = 976.426335
+    bottom-left: x = 1185.192484, y = 997.448294
+  Used kDa markers:
+    Marker set: KDA-001
+    Marker source image: D:\TAU\LCRB\wbtools\Test images\Markers 2026-06-23 12h09m39s.tif
+    Marker source dimensions: 2125 x 1700 pixels
+    Gel dimensions: 2125 x 1700 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 40, source_x_abs = 1164.000000, source_y_abs = 900.000000, gel_x_abs = 1164.000000, gel_y_abs = 900.000000, y_in_crop = 6.444140
+    2. label = 35, source_x_abs = 1152.000000, source_y_abs = 945.000000, gel_x_abs = 1152.000000, gel_y_abs = 945.000000, y_in_crop = 50.631921
+
+Band 2: Heavy Chain
+  Source image: D:\TAU\LCRB\wbtools\Test images\Blot 2026-06-23 12h10m17s.tif
+  Source dimensions: 2125 x 1700 pixels
+  Crop origin: x = 1173.032837, y = 816.088440
+  Crop size: width = 340, height = 84 pixels
+  Crop angle: -4.049582 degrees
+  Crop corners:
+    top-left: x = 1173.032837, y = 816.088440
+    top-right: x = 1512.183963, y = 792.077739
+    bottom-right: x = 1518.116018, y = 875.868017
+    bottom-left: x = 1178.964893, y = 899.878718
+  Used kDa markers:
+    Marker set: KDA-001
+    Marker source image: D:\TAU\LCRB\wbtools\Test images\Markers 2026-06-23 12h09m39s.tif
+    Marker source dimensions: 2125 x 1700 pixels
+    Gel dimensions: 2125 x 1700 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 70, source_x_abs = 1161.000000, source_y_abs = 828.000000, gel_x_abs = 1161.000000, gel_y_abs = 828.000000, y_in_crop = 11.032065
+    2. label = 55, source_x_abs = 1161.000000, source_y_abs = 855.000000, gel_x_abs = 1161.000000, gel_y_abs = 855.000000, y_in_crop = 37.964655
+    3. label = 40, source_x_abs = 1164.000000, source_y_abs = 900.000000, gel_x_abs = 1164.000000, gel_y_abs = 900.000000, y_in_crop = 83.064163
+
