@@ -12,7 +12,8 @@ Open Fiji, choose "Plugins" from dropdown menu, select "Gelato".
 Installation through Fiji Update site: 
 Open Fiji. Click Help>Update..., then "Manage update sites". Click "Add Unlisted Site".
 Fill the columns Name: GelAnno, URL: https://sites.imagej.net/GelAnno/.
-Apply changes.
+Apply changes. Fiji needs to be restarted to finilize the update.
+More about how to follow an update site: https://imagej.net/update-sites/following
 
 Works the same in ImageJ if iText module is present (used for PDF export).
 
