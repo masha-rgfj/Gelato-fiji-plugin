@@ -1,16 +1,22 @@
-# Gelato 
+# Gelato
 
-Gelato (former GelAnno) is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
+Gelato (former GelAnno or wbtools) is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
+Supported input: tif/tiff, png, jpg/jpeg
 
-Installation: put gelanno-0.8.6.jar file in "plugins" folder of Fiji and enjoy!
+Installation for windows: put gelato-1.0.0.jar file in "plugins" folder of Fiji and enjoy!
 
 Installation for Mac users: open the file contents of Fiji by right-click. 
-Drag "gelanno-0.8.6.jar" to "plugins" directory. 
-Open Fiji, choose "Plugins" from dropdown menu, select "GelAnno".
+Drag gelato-1.0.0.jar to "plugins" directory. 
+Open Fiji, choose "Plugins" from dropdown menu, select "Gelato".
+
+Installation through Fiji Update site: 
+Open Fiji. Click Help>Update..., then "Manage update sites". Click "Add Unlisted Site".
+Fill the columns Name: GelAnno, URL: https://sites.imagej.net/GelAnno/.
+Apply changes.
 
 Works the same in ImageJ if iText module is present (used for PDF export).
 
-Supported input: tif/tiff, png, jpg/jpeg
+
 
 
 
@@ -138,9 +144,9 @@ New coordinate logs use the `GelAnno Coordinate Log` header. GelAnno also accept
 
 # Citation
 
-If you use WBtool to prepare figures for a publication, please cite the version of the tool that you used.
+If you use Gelato to prepare figures for a publication, please cite the version of the tool that you used.
 
-Maria A. Pirozhkova, Elisheva Babitz. GelAnno: an ImageJ/Fiji plugin for traceable gel figures assembly and annotation. GitHub repository: https://github.com/masha-rgfj/GelAnno-fiji-plugin 2026
+Maria A. Pirozhkova, Elisheva Babitz. Gelato: an ImageJ/Fiji plugin for traceable gel figures assembly and annotation. GitHub repository: https://github.com/masha-rgfj/Gelato-fiji-plugin 2026
 
 
 ## Contributions
