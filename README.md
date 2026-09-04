@@ -1,6 +1,6 @@
-# GelAnno
+# Gelato 
 
-GelAnno is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
+Gelato (former GelAnno) is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
 
 Installation: put gelanno-0.8.6.jar file in "plugins" folder of Fiji and enjoy!
 
