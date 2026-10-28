@@ -60,8 +60,6 @@ import java.awt.image.BufferedImage;
 import java.awt.datatransfer.StringSelection;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -113,7 +111,7 @@ import org.scijava.plugin.Plugin;
 
 @Plugin(
         type = Command.class,
-        menuPath = "Plugins>Gelato>Gelato 1.1.1")
+        menuPath = "Plugins>Gelato>Gelato 1.1.3")
 public class Gelato implements Command {
     @Override
     public void run() {
@@ -136,8 +134,8 @@ public class Gelato implements Command {
         private static final float A4_PAGE_HEIGHT_PT = 841.8898f;
         private static final int TOOL_BUTTON_W = 220;
         private static final int TOOL_BUTTON_H = 30;
-        private static final String VERSION = "1.1.1";
-        private static final int LOG_FORMAT_VERSION = 1;
+        private static final String VERSION = "1.1.3";
+        private static final int LOG_FORMAT_VERSION = 2;
         private static final double CROP_GEOMETRY_AGREEMENT_TOLERANCE = 1.0;
         private static final double MARKER_COORDINATE_AGREEMENT_TOLERANCE = 1.0;
         private static final int RECONSTRUCTION_WARNING_FONT_SIZE = 16;
@@ -222,6 +220,18 @@ public class Gelato implements Command {
                 new ArrayList<AnnotatedCropSourceImage>();
         private final Set<String> shownMappingWarnings = new HashSet<String>();
         private final String windowTitle;
+        private String figureName = "";
+        private File coordinateLogFile;
+        private boolean reconstructedFromLog;
+        private boolean firstReconstructionSave;
+        private String reconstructionReportText;
+        private boolean reconstructionReportHasWarnings;
+        private JFrame reconstructionReportFrame;
+        private JButton reconstructionDetailsButton;
+        private final Map<ImagePlus, String[]> reconstructionImageRoles =
+                new LinkedHashMap<ImagePlus, String[]>();
+        private final List<CoordinateLogView> coordinateLogViews =
+                new ArrayList<CoordinateLogView>();
 
         private KdaMarkerSet activeMarkerSet;
         private MarkerSourceType markingSourceType;
@@ -373,6 +383,10 @@ public class Gelato implements Command {
                     if (kdaCanvas != null) {
                         deactivateKdaMode();
                     }
+                    if (reconstructionReportFrame != null) {
+                        reconstructionReportFrame.dispose();
+                        reconstructionReportFrame = null;
+                    }
                 }
             });
             frame.setLayout(new BorderLayout(8, 8));
@@ -471,6 +485,11 @@ public class Gelato implements Command {
             tools.add(cropSizeControls);
             tools.add(button("Show Coordinate Log", "show_coordinate_log"));
             tools.add(button("Reconstruct from Log...", "reconstruct_from_log"));
+            if (reconstructedFromLog) {
+                reconstructionDetailsButton = button("Show Reconstruction Details", "show_reconstruction_details");
+                reconstructionDetailsButton.setEnabled(false);
+                tools.add(reconstructionDetailsButton);
+            }
             tools.add(button("Clear Figure", "clear_figure"));
             tools.add(Box.createVerticalStrut(8));
 
@@ -504,7 +523,18 @@ public class Gelato implements Command {
             statusBar.add(statusLabel, BorderLayout.CENTER);
             statusBar.add(createZoomControls(), BorderLayout.EAST);
 
-            frame.add(tools, BorderLayout.WEST);
+            if (reconstructedFromLog) {
+                // The extra report control must remain reachable on shorter screens.
+                tools.setPreferredSize(new Dimension(TOOL_BUTTON_W + 20, tools.getMinimumSize().height));
+                JScrollPane toolsScrollPane = new JScrollPane(tools,
+                        JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+                toolsScrollPane.setBorder(BorderFactory.createEmptyBorder());
+                toolsScrollPane.setPreferredSize(new Dimension(TOOL_BUTTON_W + 40, 620));
+                toolsScrollPane.getVerticalScrollBar().setUnitIncrement(20);
+                frame.add(toolsScrollPane, BorderLayout.WEST);
+            } else {
+                frame.add(tools, BorderLayout.WEST);
+            }
             JPanel figurePanel = new JPanel(new BorderLayout(0, 4));
             figurePanel.add(createFigureControls(), BorderLayout.NORTH);
             figurePanel.add(figureScrollPane, BorderLayout.CENTER);
@@ -727,6 +757,8 @@ public class Gelato implements Command {
                 showCoordinateLog();
             } else if ("reconstruct_from_log".equals(command)) {
                 showReconstructionLogDialog();
+            } else if ("show_reconstruction_details".equals(command)) {
+                openReconstructionReport();
             } else if ("clear_figure".equals(command)) {
                 clearFigure();
             } else if ("export_pdf".equals(command)) {
@@ -1544,19 +1576,9 @@ public class Gelato implements Command {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileFilter(new FileNameExtensionFilter(
                     "Image files (TIFF, PNG, JPEG)", "tif", "tiff", "png", "jpg", "jpeg"));
-            if (lastDir != null) {
-                chooser.setCurrentDirectory(lastDir);
-            } else {
-                String prefDir = Prefs.get(LAST_DIR_PREFERENCE, null);
-                if (prefDir == null) {
-                    prefDir = Prefs.get(GELANNO_LAST_DIR_PREFERENCE, null);
-                }
-                if (prefDir == null) {
-                    prefDir = Prefs.get(WB_TOOL_LAST_DIR_PREFERENCE, null);
-                }
-                if (prefDir != null) {
-                    chooser.setCurrentDirectory(new File(prefDir));
-                }
+            File rememberedDirectory = rememberedImageDirectory();
+            if (rememberedDirectory != null) {
+                chooser.setCurrentDirectory(rememberedDirectory);
             }
             if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) {
                 return null;
@@ -2379,62 +2401,193 @@ public class Gelato implements Command {
             return file;
         }
 
+        private String promptFigureName(Component parent, String initialName) {
+            while (true) {
+                Object answer = JOptionPane.showInputDialog(parent, "Enter figure name:",
+                        "Figure Name", JOptionPane.QUESTION_MESSAGE, null, null, initialName);
+                if (answer == null) return null;
+                String name = answer.toString().trim();
+                if (validFigureName(name)) return name;
+                JOptionPane.showMessageDialog(parent,
+                        "Enter a nonblank figure name on one line (no control characters).",
+                        "Figure Name", JOptionPane.WARNING_MESSAGE);
+                initialName = name;
+            }
+        }
+
+        private static boolean validFigureName(String name) {
+            if (name == null || name.trim().isEmpty()) return false;
+            for (int i = 0; i < name.length(); i++) {
+                if (Character.isISOControl(name.charAt(i))
+                        || name.charAt(i) == '\u2028' || name.charAt(i) == '\u2029') return false;
+            }
+            return true;
+        }
+
+        private void setFigureName(String name) {
+            figureName = name;
+            if (frame != null) frame.setTitle(TITLE + " - " + figureName
+                    + (reconstructedFromLog ? " - Reconstructed from coordinate log" : ""));
+            if (reconstructionReportFrame != null) {
+                reconstructionReportFrame.setTitle(reconstructionReportTitle());
+            }
+            updateReconstructionImageTitles();
+            for (CoordinateLogView view : coordinateLogViews) view.updateNotice();
+        }
+
+        private void updateReconstructionImageTitles() {
+            int index = 0;
+            int total = reconstructionImageRoles.size();
+            for (Map.Entry<ImagePlus, String[]> entry : reconstructionImageRoles.entrySet()) {
+                String[] parts = entry.getValue();
+                entry.getKey().setTitle(parts[0] + " - Used in " + figureName + " - " + parts[1]
+                        + " (" + (++index) + "/" + total + ")");
+            }
+        }
+
+        private void registerReconstructionImage(ImagePlus image, String filename, String role) {
+            // Store components separately from the visible title, so renaming is lossless.
+            reconstructionImageRoles.put(image, new String[] {filename, role});
+        }
+
+        private static String safeFigureFilename(String name) {
+            String base = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_")
+                    .replaceAll("[. ]+$", "").trim();
+            if (base.isEmpty()) base = "figure";
+            if (base.matches("(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\..*)?")) {
+                base = "_" + base;
+            }
+            // Leave room for an extension and ordinary parent directories on Windows.
+            return base.substring(0, Math.min(120, base.length()));
+        }
+
         private void showCoordinateLog() {
-            final JDialog dialog = new JDialog(frame, "Gelato Coordinate Log", false);
-            dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-            dialog.setLayout(new BorderLayout(8, 8));
+            if (figureName.isEmpty()) {
+                String name = promptFigureName(frame, "");
+                if (name == null) return;
+                setFigureName(name);
+            }
+            new CoordinateLogView().show();
+        }
 
-            final JTextArea textArea = new JTextArea(buildCoordinateLog(), 34, 92);
-            textArea.setEditable(false);
-            textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-            textArea.setLineWrap(false);
-            textArea.setCaretPosition(0);
-            dialog.add(new JScrollPane(textArea), BorderLayout.CENTER);
+        private final class CoordinateLogView {
+            final JDialog dialog = new JDialog(frame, "Coordinate Log - " + figureName, false);
+            final JTextArea textArea = new JTextArea(34, 92);
+            final JLabel notice = new JLabel();
+            final javax.swing.Timer timer;
+            String snapshotName;
+            List<Object> snapshotSignature;
 
-            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            JButton refresh = new JButton("Refresh");
-            refresh.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent event) {
-                    textArea.setText(buildCoordinateLog());
-                    textArea.setCaretPosition(0);
-                }
-            });
-            buttons.add(refresh);
+            CoordinateLogView() {
+                dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+                dialog.setLayout(new BorderLayout(8, 8));
+                textArea.setEditable(false);
+                textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+                textArea.setLineWrap(false);
+                JPanel header = new JPanel(new GridLayout(0, 1));
+                header.add(notice);
+                header.add(new JLabel("Coordinate logs reconstruct crops and kDa markers; added annotations are not included."));
+                dialog.add(header, BorderLayout.NORTH);
+                dialog.add(new JScrollPane(textArea), BorderLayout.CENTER);
+                JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+                addButton(buttons, "Rename Figure...", new Runnable() {
+                    public void run() {
+                        String name = promptFigureName(dialog, figureName);
+                        if (name != null) {
+                            setFigureName(name);
+                            // Renaming must not silently refresh outdated coordinates.
+                            textArea.setText(replaceFigureName(textArea.getText(), name));
+                            snapshotName = name;
+                            updateNotice();
+                        }
+                    }
+                });
+                addButton(buttons, "Refresh", new Runnable() {
+                    public void run() { refresh(); }
+                });
+                addButton(buttons, "Copy", new Runnable() {
+                    public void run() {
+                        if (!prepareExport("Copy")) return;
+                        Toolkit.getDefaultToolkit().getSystemClipboard()
+                                .setContents(new StringSelection(textArea.getText()), null);
+                        setStatus("Coordinate log copied to the clipboard.");
+                    }
+                });
+                addButton(buttons, "Save Log", new Runnable() {
+                    public void run() { saveCoordinateLog(CoordinateLogView.this, false); }
+                });
+                addButton(buttons, "Save Log As...", new Runnable() {
+                    public void run() { saveCoordinateLog(CoordinateLogView.this, true); }
+                });
+                addButton(buttons, "Close", new Runnable() {
+                    public void run() { dialog.dispose(); }
+                });
+                dialog.add(buttons, BorderLayout.SOUTH);
+                timer = new javax.swing.Timer(600, new ActionListener() {
+                    public void actionPerformed(ActionEvent event) { updateNotice(); }
+                });
+                dialog.addWindowListener(new WindowAdapter() {
+                    public void windowClosed(WindowEvent event) {
+                        timer.stop();
+                        coordinateLogViews.remove(CoordinateLogView.this);
+                    }
+                });
+                coordinateLogViews.add(this);
+                refresh();
+                dialog.setSize(1000, 680);
+                dialog.setLocationRelativeTo(frame);
+            }
 
-            JButton copy = new JButton("Copy");
-            copy.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent event) {
-                    Toolkit.getDefaultToolkit().getSystemClipboard()
-                            .setContents(new StringSelection(textArea.getText()), null);
-                    setStatus("Coordinate log copied to the clipboard.");
-                }
-            });
-            buttons.add(copy);
+            void addButton(JPanel panel, String label, final Runnable action) {
+                JButton button = new JButton(label);
+                button.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent event) { action.run(); }
+                });
+                panel.add(button);
+            }
 
-            JButton save = new JButton("Save Log...");
-            save.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent event) {
-                    saveCoordinateLog(textArea.getText());
-                }
-            });
-            buttons.add(save);
+            void show() { timer.start(); dialog.setVisible(true); }
 
-            JButton close = new JButton("Close");
-            close.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent event) {
-                    dialog.dispose();
-                }
-            });
-            buttons.add(close);
-            dialog.add(buttons, BorderLayout.SOUTH);
+            void refresh() {
+                textArea.setText(buildCoordinateLog());
+                textArea.setCaretPosition(0);
+                snapshotName = figureName;
+                snapshotSignature = new FigureState(Controller.this).signature;
+                updateNotice();
+            }
 
-            dialog.setSize(860, 650);
-            dialog.setLocationRelativeTo(frame);
-            dialog.setVisible(true);
+            boolean isStale() {
+                return !textArea.getText().equals(buildCoordinateLog())
+                        || !snapshotSignature.equals(new FigureState(Controller.this).signature);
+            }
+
+            void updateNotice() {
+                dialog.setTitle("Coordinate Log - " + figureName);
+                notice.setText(isStale()
+                        ? "The figure has changed since this log was generated. Refresh to update the log."
+                        : "The displayed log is up to date.");
+            }
+
+            boolean prepareExport(String action) {
+                if (!isStale()) return true;
+                String[] options = {"Refresh and " + action, action + " Displayed Log", "Cancel"};
+                int choice = JOptionPane.showOptionDialog(dialog,
+                        "The figure has changed since this log was generated.\n"
+                        + "The displayed log does not include the latest figure changes.\n"
+                        + "Refresh it before " + ("Copy".equals(action) ? "copying?" : "saving?"),
+                        "Coordinate Log Out of Date - " + figureName, JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+                if (choice == 0) refresh();
+                updateNotice();
+                return choice == 0 || choice == 1;
+            }
+        }
+
+        private static String replaceFigureName(String log, String name) {
+            int start = log.indexOf("\nFigure name: ") + 1;
+            if (start == 0) throw new IllegalArgumentException("Missing figure name field.");
+            int end = log.indexOf('\n', start);
+            return log.substring(0, start) + "Figure name: " + name + log.substring(end);
         }
 
         private void showReconstructionLogDialog() {
@@ -2443,6 +2596,12 @@ public class Gelato implements Command {
             dialog.setLayout(new BorderLayout(8, 8));
 
             final JTextArea textArea = new JTextArea(34, 92);
+            final File[] loadedLogFile = {null};
+            textArea.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                public void insertUpdate(javax.swing.event.DocumentEvent event) { loadedLogFile[0] = null; }
+                public void removeUpdate(javax.swing.event.DocumentEvent event) { loadedLogFile[0] = null; }
+                public void changedUpdate(javax.swing.event.DocumentEvent event) { loadedLogFile[0] = null; }
+            });
             textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
             textArea.setLineWrap(false);
             dialog.add(new JScrollPane(textArea), BorderLayout.CENTER);
@@ -2466,6 +2625,7 @@ public class Gelato implements Command {
                     try {
                         byte[] bytes = Files.readAllBytes(file.toPath());
                         textArea.setText(new String(bytes, StandardCharsets.UTF_8));
+                        loadedLogFile[0] = file;
                         textArea.setCaretPosition(0);
                         lastDir = file.getParentFile();
                     } catch (Exception ex) {
@@ -2489,6 +2649,13 @@ public class Gelato implements Command {
                         showReadableMessageDialog(dialog, ex.getMessage(),
                                 "Invalid Coordinate Log", JOptionPane.ERROR_MESSAGE);
                         return;
+                    }
+                    parsed.logFile = loadedLogFile[0];
+                    if (parsed.figureName == null) {
+                        String suggested = parsed.logFile == null ? ""
+                                : parsed.logFile.getName().replaceFirst("(?i)\\.(txt|log)$", "");
+                        parsed.figureName = promptFigureName(dialog, suggested);
+                        if (parsed.figureName == null) return;
                     }
                     dialog.dispose();
                     reconstructFromLog(parsed);
@@ -2542,6 +2709,13 @@ public class Gelato implements Command {
                 if (line.startsWith("Log format version:")) {
                     parsed.formatVersion = parseInteger(
                             valueAfter(line, "Log format version:"), lineNumber, "log format version");
+                    continue;
+                }
+                if (section == 0 && line.startsWith("Figure name:")) {
+                    if (parsed.figureName != null) {
+                        throw new IllegalArgumentException("Duplicate figure name field.");
+                    }
+                    parsed.figureName = valueAfter(line, "Figure name:");
                     continue;
                 }
                 if (line.startsWith("Plugin version:")) {
@@ -2674,6 +2848,10 @@ public class Gelato implements Command {
                 throw new IllegalArgumentException("Log format version " + parsed.formatVersion
                         + " is newer than this plugin supports (version "
                         + LOG_FORMAT_VERSION + ").");
+            }
+            if ((parsed.formatVersion >= 2 || parsed.figureName != null)
+                    && !validFigureName(parsed.figureName)) {
+                throw new IllegalArgumentException("A format v2 log must contain a nonblank, single-line Figure name field.");
             }
             Map<String, LoggedMarkerSet> markerSetsById =
                     new LinkedHashMap<String, LoggedMarkerSet>();
@@ -3170,7 +3348,7 @@ public class Gelato implements Command {
                     buildReconstructionImageRequests(parsed, referencedMarkerSetIds);
             List<String> reconstructionWarnings = new ArrayList<String>();
             for (ReconstructionImageRequest request : requests.values()) {
-                if (!selectReconstructionImage(request)) {
+                if (!selectReconstructionImage(request, parsed.logFile)) {
                     setStatus("Reconstruction cancelled.");
                     return;
                 }
@@ -3191,9 +3369,13 @@ public class Gelato implements Command {
                 return;
             }
 
-            Controller reconstructed = new Controller(
-                    TITLE + " - Reconstructed from coordinate log");
+            Controller reconstructed = new Controller();
+            reconstructed.reconstructedFromLog = true;
+            reconstructed.firstReconstructionSave = true;
+            reconstructed.coordinateLogFile = parsed.logFile;
+            reconstructed.figureName = parsed.figureName;
             reconstructed.showFrame();
+            reconstructed.setFigureName(parsed.figureName);
 
             Map<String, KdaMarkerSet> reconstructedSets =
                     new LinkedHashMap<String, KdaMarkerSet>();
@@ -3307,6 +3489,7 @@ public class Gelato implements Command {
                         markerSet, request.loadedImage, annotatedIndex++, parsed.crops);
             }
 
+            reconstructed.updateReconstructionImageTitles();
             String status = "Reconstructed " + reconstructed.bands.size()
                     + " crop(s) from coordinate log.";
             if (!skippedMarkerSets.isEmpty()) {
@@ -3362,8 +3545,52 @@ public class Gelato implements Command {
                 }
             }
 
-            JTextArea reportArea = new JTextArea(report.toString(),
-                    Math.min(22, Math.max(8, parsed.crops.size() * 2 + 5)), 72);
+            reconstructed.reconstructionReportText = report.toString();
+            reconstructed.reconstructionReportHasWarnings = !skippedMarkerSets.isEmpty()
+                    || !reconstructionWarnings.isEmpty();
+            if (reconstructed.reconstructionDetailsButton != null) {
+                reconstructed.reconstructionDetailsButton.setEnabled(true);
+            }
+            reconstructed.openReconstructionReport();
+        }
+
+        private String reconstructionReportTitle() {
+            return (reconstructionReportHasWarnings ? "Reconstruction Details and Warnings - "
+                    : "Reconstruction Details - ") + figureName;
+        }
+
+        private void openReconstructionReport() {
+            if (reconstructionReportText == null) {
+                return;
+            }
+            if (reconstructionReportFrame == null) {
+                reconstructionReportFrame = createReconstructionReportFrame();
+            }
+            reconstructionReportFrame.setExtendedState(
+                    reconstructionReportFrame.getExtendedState() & ~JFrame.ICONIFIED);
+            reconstructionReportFrame.setVisible(true);
+            reconstructionReportFrame.toFront();
+            reconstructionReportFrame.requestFocus();
+        }
+
+        private JFrame createReconstructionReportFrame() {
+            // A separate frame allows minimizing the report without blocking the figure or images.
+            final JFrame reportFrame = new JFrame(reconstructionReportTitle());
+            reportFrame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+            JPanel content = new JPanel(new BorderLayout(8, 8));
+            content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            reportFrame.setContentPane(content);
+
+            JPanel heading = new JPanel(new GridLayout(0, 1, 0, 4));
+            heading.add(new JLabel(reconstructionReportHasWarnings
+                    ? "Reconstruction completed with warnings." : "Reconstruction completed.",
+                    UIManager.getIcon(reconstructionReportHasWarnings
+                            ? "OptionPane.warningIcon" : "OptionPane.informationIcon"), JLabel.LEFT));
+            heading.add(new JLabel("Details recorded at reconstruction; later figure edits do not change this report."));
+            content.add(heading, BorderLayout.NORTH);
+
+            JTextArea reportArea = new JTextArea(reconstructionReportText,
+                    Math.min(22, Math.max(8, reconstructionReportText.split("\n", -1).length)), 72);
             reportArea.setEditable(false);
             reportArea.setLineWrap(true);
             reportArea.setWrapStyleWord(true);
@@ -3373,13 +3600,37 @@ public class Gelato implements Command {
             JScrollPane reportPane = new JScrollPane(reportArea);
             reportPane.setPreferredSize(new Dimension(780,
                     Math.min(560, Math.max(280, reportArea.getRows() * 25))));
-            boolean hasWarnings = !skippedMarkerSets.isEmpty()
-                    || !reconstructionWarnings.isEmpty();
-            JOptionPane.showMessageDialog(reconstructed.frame, reportPane,
-                    hasWarnings ? "Reconstruction Details and Warnings"
-                            : "Reconstruction Details",
-                    hasWarnings ? JOptionPane.WARNING_MESSAGE
-                            : JOptionPane.INFORMATION_MESSAGE);
+            content.add(reportPane, BorderLayout.CENTER);
+
+            JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            final JCheckBox keepOnTop = new JCheckBox("Keep on top", true);
+            if (reportFrame.isAlwaysOnTopSupported()) {
+                reportFrame.setAlwaysOnTop(true);
+            } else {
+                keepOnTop.setSelected(false);
+                keepOnTop.setEnabled(false);
+            }
+            keepOnTop.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent event) {
+                    reportFrame.setAlwaysOnTop(keepOnTop.isSelected());
+                }
+            });
+            controls.add(keepOnTop);
+            JButton close = new JButton("Close");
+            close.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent event) {
+                    reportFrame.setVisible(false);
+                }
+            });
+            controls.add(close);
+            content.add(controls, BorderLayout.SOUTH);
+
+            reportFrame.pack();
+            reportFrame.setMinimumSize(new Dimension(440, 240));
+            reportFrame.setLocationRelativeTo(frame);
+            return reportFrame;
         }
 
         private static void showReadableMessageDialog(Component parent, String message,
@@ -3786,27 +4037,78 @@ public class Gelato implements Command {
                     + " pixels. Recalculated coordinates were used.");
         }
 
-        private boolean selectReconstructionImage(ReconstructionImageRequest request) {
-            while (true) {
-                JFileChooser chooser = new JFileChooser();
-                chooser.setDialogTitle(request.required
-                        ? "Select Required Gel Image" : "Select Marker Source Image");
-                chooser.setApproveButtonText("Use Image");
-                chooser.setFileFilter(new FileNameExtensionFilter(
-                        "Image files (TIFF, PNG, JPEG)", "tif", "tiff", "png", "jpg", "jpeg"));
-                if (lastDir != null) {
-                    chooser.setCurrentDirectory(lastDir);
+        private File rememberedImageDirectory() {
+            if (lastDir != null && lastDir.isDirectory()) {
+                return lastDir;
+            }
+            String[] preferences = {LAST_DIR_PREFERENCE,
+                    GELANNO_LAST_DIR_PREFERENCE, WB_TOOL_LAST_DIR_PREFERENCE};
+            for (String preference : preferences) {
+                String path = Prefs.get(preference, null);
+                if (path != null) {
+                    File directory = new File(path);
+                    if (directory.isDirectory()) {
+                        return directory;
+                    }
                 }
+            }
+            return null;
+        }
 
-                JTextArea details = new JTextArea(reconstructionImageDetails(request), 9, 34);
-                details.setEditable(false);
-                details.setOpaque(false);
-                details.setLineWrap(true);
-                details.setWrapStyleWord(true);
-                details.setFont(new Font(Font.SANS_SERIF, Font.PLAIN,
-                        RECONSTRUCTION_ACCESSORY_FONT_SIZE));
-                chooser.setAccessory(details);
+        private static File findLoggedImageFile(String sourcePath, File logFile) {
+            if (sourcePath == null || sourcePath.trim().isEmpty()) {
+                return null;
+            }
+            try {
+                File source = new File(sourcePath);
+                if (!source.isAbsolute()) {
+                    // A pasted log has no directory against which to resolve a relative path.
+                    if (logFile == null) {
+                        return null;
+                    }
+                    File logDirectory = logFile.getAbsoluteFile().getParentFile();
+                    if (logDirectory == null) {
+                        return null;
+                    }
+                    source = new File(logDirectory, sourcePath);
+                }
+                // Looking up a suggestion never changes the path recorded in the log.
+                return source.isFile() && source.canRead() ? source.getAbsoluteFile() : null;
+            } catch (SecurityException ex) {
+                // Inaccessible paths use the same manual-selection workflow as missing files.
+                return null;
+            }
+        }
 
+        private boolean selectReconstructionImage(ReconstructionImageRequest request, File logFile) {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle(request.required
+                    ? "Select Required Gel Image" : "Select Marker Source Image");
+            chooser.setApproveButtonText("Use Image");
+            chooser.setFileFilter(new FileNameExtensionFilter(
+                    "Image files (TIFF, PNG, JPEG)", "tif", "tiff", "png", "jpg", "jpeg"));
+            File suggestedFile = findLoggedImageFile(request.originalPath, logFile);
+            if (suggestedFile != null) {
+                chooser.setCurrentDirectory(suggestedFile.getParentFile());
+                chooser.setSelectedFile(suggestedFile);
+            } else {
+                File rememberedDirectory = rememberedImageDirectory();
+                if (rememberedDirectory != null) {
+                    chooser.setCurrentDirectory(rememberedDirectory);
+                }
+            }
+
+            JTextArea details = new JTextArea(reconstructionImageDetails(request), 9, 34);
+            details.setEditable(false);
+            details.setOpaque(false);
+            details.setLineWrap(true);
+            details.setWrapStyleWord(true);
+            details.setFont(new Font(Font.SANS_SERIF, Font.PLAIN,
+                    RECONSTRUCTION_ACCESSORY_FONT_SIZE));
+            chooser.setAccessory(details);
+
+            // Reuse the chooser so retries retain the user's browsing location and selection.
+            while (true) {
                 if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) {
                     if (request.required) {
                         return false;
@@ -3830,11 +4132,6 @@ public class Gelato implements Command {
                 if (loaded == null) {
                     continue;
                 }
-                lastDir = selected.getParentFile();
-                if (lastDir != null) {
-                    Prefs.set(LAST_DIR_PREFERENCE, lastDir.getAbsolutePath());
-                }
-
                 if (request.hasExpectedDimensions()
                         && (loaded.imagePlus.getWidth() != request.expectedWidth
                         || loaded.imagePlus.getHeight() != request.expectedHeight)) {
@@ -3862,6 +4159,10 @@ public class Gelato implements Command {
                     request.aspectRatioMismatch = ratioMismatch;
                 }
                 request.loadedImage = loaded;
+                lastDir = selected.getParentFile();
+                if (lastDir != null) {
+                    Prefs.set(LAST_DIR_PREFERENCE, lastDir.getAbsolutePath());
+                }
                 return true;
             }
         }
@@ -3980,6 +4281,7 @@ public class Gelato implements Command {
                 ImagePlus annotatedImage = new ImagePlus(
                         "Crops from coordinate log - " + new File(source.path).getName(),
                         source.imagePlus.getProcessor().duplicate());
+                registerReconstructionImage(annotatedImage, new File(source.path).getName(), "Crops");
                 AnnotatedCropSourceImage annotated = new AnnotatedCropSourceImage(
                         annotatedImage, entry.getValue());
                 annotatedCropSourceImages.add(annotated);
@@ -4464,6 +4766,8 @@ public class Gelato implements Command {
             ImagePlus annotatedImage = new ImagePlus(
                     markerSet.id + " - marker source - " + new File(loadedImage.path).getName(),
                     loadedImage.imagePlus.getProcessor().duplicate());
+            registerReconstructionImage(annotatedImage, new File(loadedImage.path).getName(),
+                    "Markers " + markerSet.id);
             double scaleX = annotatedImage.getWidth() / (double) markerSet.sourceWidth;
             double scaleY = annotatedImage.getHeight() / (double) markerSet.sourceHeight;
             AnnotatedMarkerImage annotated = new AnnotatedMarkerImage(
@@ -4508,35 +4812,93 @@ public class Gelato implements Command {
             }
         }
 
-        private void saveCoordinateLog(String text) {
-            File path = chooseSavePath("Save Coordinate Log", "Text files", "txt");
-            if (path == null) {
-                return;
+        private void saveCoordinateLog(CoordinateLogView view, boolean saveAs) {
+            if (!view.prepareExport("Save")) return;
+            if (firstReconstructionSave && coordinateLogFile != null && !saveAs) {
+                String[] options = {"Update Existing Log...", "Save as New Log...", "Cancel"};
+                int choice = JOptionPane.showOptionDialog(view.dialog,
+                        "This figure was reconstructed from a coordinate log.\n"
+                        + "Choose whether to update that file or save a new log.\n\n"
+                        + coordinateLogFile.getAbsolutePath(),
+                        "Save Reconstructed Figure - " + figureName, JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.QUESTION_MESSAGE, null, options, options[1]);
+                if (choice != 0 && choice != 1) return;
+                saveAs = choice == 1;
             }
-            Writer writer = null;
-            try {
-                writer = new OutputStreamWriter(new FileOutputStream(path), StandardCharsets.UTF_8);
-                writer.write(text);
-                writer.close();
-                setStatus("Coordinate log saved: " + path.getAbsolutePath());
-            } catch (Exception ex) {
-                try {
-                    if (writer != null) {
-                        writer.close();
-                    }
-                } catch (Exception ignored) {
-                    // Preserve the original save error.
+            saveAs = saveAs || coordinateLogFile == null;
+            String savedName = view.snapshotName;
+            File target = coordinateLogFile;
+            if (saveAs) {
+                savedName = promptFigureName(view.dialog, view.snapshotName);
+                if (savedName == null) return;
+                target = chooseSavePath(view.dialog, "Save Coordinate Log As - " + savedName,
+                        "Text files", "txt", safeFigureFilename(savedName));
+                if (target == null) return;
+                // Save As New must never silently select the source file.
+                if (firstReconstructionSave && coordinateLogFile != null
+                        && sameLogFile(target, coordinateLogFile)) {
+                    JOptionPane.showMessageDialog(view.dialog,
+                            "Save as New Log needs a different file. Choose Save Log to update the original.",
+                            "Save Coordinate Log", JOptionPane.WARNING_MESSAGE);
+                    return;
                 }
-                JOptionPane.showMessageDialog(frame,
+            }
+            // First reconstruction update and Save As confirm replacement. Later Save is ordinary Save.
+            if (target.exists() && (saveAs || firstReconstructionSave)
+                    && JOptionPane.showConfirmDialog(view.dialog,
+                    "Replace the existing coordinate log?\n" + target.getAbsolutePath(),
+                    "Replace Coordinate Log - " + savedName, JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) return;
+            String text = replaceFigureName(view.textArea.getText(), savedName);
+            try {
+                writeCoordinateLog(target, text);
+                coordinateLogFile = target;
+                firstReconstructionSave = false;
+                if (saveAs) {
+                    setFigureName(savedName);
+                    view.snapshotName = savedName;
+                    view.textArea.setText(text);
+                }
+                view.updateNotice();
+                setStatus("Coordinate log saved: " + target.getAbsolutePath());
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(view.dialog,
                         "Could not save the coordinate log.\n"
-                                + ex.getClass().getSimpleName() + ": " + ex.getMessage(),
+                        + ex.getClass().getSimpleName() + ": " + ex.getMessage(),
                         "Save Coordinate Log", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+
+        private static boolean sameLogFile(File a, File b) {
+            try {
+                return a.getCanonicalFile().equals(b.getCanonicalFile())
+                        || (a.exists() && b.exists() && Files.isSameFile(a.toPath(), b.toPath()));
+            } catch (java.io.IOException ex) {
+                return a.getAbsoluteFile().equals(b.getAbsoluteFile());
+            }
+        }
+
+        private static void writeCoordinateLog(File target, String text) throws java.io.IOException {
+            // Stage beside the destination so failed writes leave an existing log intact.
+            java.nio.file.Path destination = target.toPath().toAbsolutePath();
+            java.nio.file.Path temporary = Files.createTempFile(destination.getParent(), ".gelato-", ".tmp");
+            try {
+                Files.write(temporary, text.getBytes(StandardCharsets.UTF_8));
+                try {
+                    Files.move(temporary, destination, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                    Files.move(temporary, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(temporary);
             }
         }
 
         private String buildCoordinateLog() {
             StringBuilder log = new StringBuilder();
             log.append(COORDINATE_LOG_HEADER).append("\n");
+            log.append("Figure name: ").append(figureName).append("\n");
             log.append("Log format version: ").append(LOG_FORMAT_VERSION).append("\n");
             log.append("Plugin version: ").append(VERSION).append("\n\n");
             log.append("Coordinate convention:\n");
@@ -7262,6 +7624,8 @@ public class Gelato implements Command {
     private static final class ParsedCoordinateLog {
         int formatVersion;
         String pluginVersion;
+        String figureName;
+        File logFile;
         final List<LoggedMarkerSet> markerSets = new ArrayList<LoggedMarkerSet>();
         final Map<String, LoggedMarkerSet> markerSetsById =
                 new LinkedHashMap<String, LoggedMarkerSet>();
