@@ -1,0 +1,76 @@
+Gelato Coordinate Log
+Log format version: 1
+Plugin version: 1.0.0
+
+Coordinate convention:
+  Origin: top-left image pixel
+  X direction: right
+  Y direction: down
+  Crop corners: top-left, top-right, bottom-right, bottom-left
+  Angles: degrees clockwise in image coordinates
+
+Global kDa marker sets:
+KDA-002:
+  Source type: kDa marker image
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+  Source dimensions: 2456 x 1831 pixels
+  Markers:
+    1. label = 180, x_abs = 183.000000, y_abs = 363.000000
+    2. label = 150, x_abs = 183.000000, y_abs = 399.000000
+    3. label = 120, x_abs = 180.000000, y_abs = 453.000000
+    4. label = 100, x_abs = 180.000000, y_abs = 501.000000
+    5. label = 80, x_abs = 171.000000, y_abs = 564.000000
+    6. label = 55, x_abs = 165.000000, y_abs = 624.000000
+    7. label = 100, x_abs = 186.000000, y_abs = 723.000000
+    8. label = 80, x_abs = 177.000000, y_abs = 780.000000
+    9. label = 55, x_abs = 168.000000, y_abs = 843.000000
+    10. label = 40, x_abs = 174.000000, y_abs = 894.000000
+    11. label = 55, x_abs = 669.000000, y_abs = 1110.000000
+    12. label = 40, x_abs = 669.000000, y_abs = 1173.000000
+    13. label = 25, x_abs = 669.000000, y_abs = 1254.000000
+    14. label = 10, x_abs = 672.000000, y_abs = 1311.000000
+
+Crops in figure:
+Band 1: Protein A
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 205.650497, y = 400.465424
+  Crop size: width = 840, height = 231 pixels
+  Crop angle: 0.818455 degrees
+  Crop corners:
+    top-left: x = 205.650497, y = 400.465424
+    top-right: x = 1045.564796, y = 412.464199
+    bottom-right: x = 1042.265133, y = 643.440631
+    bottom-left: x = 202.350834, y = 631.441856
+  Used kDa markers:
+    Marker set: KDA-002
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 120, source_x_abs = 180.000000, source_y_abs = 453.000000, gel_x_abs = 180.000000, gel_y_abs = 453.000000, y_in_crop = 52.895615
+    2. label = 100, source_x_abs = 180.000000, source_y_abs = 501.000000, gel_x_abs = 180.000000, gel_y_abs = 501.000000, y_in_crop = 100.890718
+    3. label = 80, source_x_abs = 171.000000, source_y_abs = 564.000000, gel_x_abs = 171.000000, gel_y_abs = 564.000000, y_in_crop = 164.012848
+    4. label = 55, source_x_abs = 165.000000, source_y_abs = 624.000000, gel_x_abs = 165.000000, gel_y_abs = 624.000000, y_in_crop = 224.092432
+
+Band 2: Protein B
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 237.000000, y = 666.244629
+  Crop size: width = 828, height = 210 pixels
+  Crop angle: 0.000000 degrees
+  Crop corners:
+    top-left: x = 237.000000, y = 666.244629
+    top-right: x = 1065.000000, y = 666.244629
+    bottom-right: x = 1065.000000, y = 876.244629
+    bottom-left: x = 237.000000, y = 876.244629
+  Used kDa markers:
+    Marker set: KDA-002
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 100, source_x_abs = 186.000000, source_y_abs = 723.000000, gel_x_abs = 186.000000, gel_y_abs = 723.000000, y_in_crop = 56.755371
+    2. label = 80, source_x_abs = 177.000000, source_y_abs = 780.000000, gel_x_abs = 177.000000, gel_y_abs = 780.000000, y_in_crop = 113.755371
+    3. label = 55, source_x_abs = 168.000000, source_y_abs = 843.000000, gel_x_abs = 168.000000, gel_y_abs = 843.000000, y_in_crop = 176.755371
+
