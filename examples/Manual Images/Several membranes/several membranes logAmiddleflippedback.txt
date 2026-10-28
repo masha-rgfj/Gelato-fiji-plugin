@@ -1,0 +1,172 @@
+Gelato Coordinate Log
+Log format version: 1
+Plugin version: 1.0.0
+
+Coordinate convention:
+  Origin: top-left image pixel
+  X direction: right
+  Y direction: down
+  Crop corners: top-left, top-right, bottom-right, bottom-left
+  Angles: degrees clockwise in image coordinates
+
+Global kDa marker sets:
+KDA-003:
+  Source type: kDa marker image
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+  Source dimensions: 2456 x 1831 pixels
+  Markers:
+    1. label = 180, x_abs = 195.000000, y_abs = 363.000000
+    2. label = 150, x_abs = 189.000000, y_abs = 396.000000
+    3. label = 130, x_abs = 183.000000, y_abs = 453.000000
+    4. label = 100, x_abs = 177.000000, y_abs = 501.000000
+    5. label = 70, x_abs = 174.000000, y_abs = 570.000000
+    6. label = 55, x_abs = 174.000000, y_abs = 621.000000
+    7. label = 100, x_abs = 198.000000, y_abs = 723.000000
+    8. label = 70, x_abs = 180.000000, y_abs = 771.000000
+    9. label = 55, x_abs = 168.000000, y_abs = 846.000000
+    10. label = 40, x_abs = 177.000000, y_abs = 888.000000
+    11. label = 55, x_abs = 678.000000, y_abs = 1110.000000
+    12. label = 40, x_abs = 669.000000, y_abs = 1173.000000
+    13. label = 25, x_abs = 675.000000, y_abs = 1257.000000
+    14. label = 10, x_abs = 666.000000, y_abs = 1308.000000
+
+KDA-004:
+  Source type: kDa marker image
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+  Source dimensions: 2456 x 1831 pixels
+  Markers:
+    1. label = 180, x_abs = 1944.000000, y_abs = 399.000000
+    2. label = 150, x_abs = 1953.000000, y_abs = 435.000000
+    3. label = 120, x_abs = 1953.000000, y_abs = 495.000000
+    4. label = 100, x_abs = 1953.000000, y_abs = 540.000000
+    5. label = 70, x_abs = 1959.000000, y_abs = 612.000000
+    6. label = 55, x_abs = 1956.000000, y_abs = 681.000000
+    7. label = 100, x_abs = 1944.000000, y_abs = 804.000000
+    8. label = 70, x_abs = 1938.000000, y_abs = 864.000000
+    9. label = 55, x_abs = 1935.000000, y_abs = 939.000000
+    10. label = 40, x_abs = 1941.000000, y_abs = 984.000000
+    11. label = 55, x_abs = 1746.000000, y_abs = 1155.000000
+    12. label = 40, x_abs = 1743.000000, y_abs = 1194.000000
+    13. label = 25, x_abs = 1743.000000, y_abs = 1248.000000
+    14. label = 10, x_abs = 1746.000000, y_abs = 1296.000000
+
+Crops in figure:
+Band 1: Top Left
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 664.240173, y = 441.372101
+  Crop size: width = 303, height = 125 pixels
+  Crop angle: 1.134422 degrees
+  Crop corners:
+    top-left: x = 664.240173, y = 441.372101
+    top-right: x = 967.180785, y = 447.370925
+    bottom-right: x = 964.706022, y = 572.346425
+    bottom-left: x = 661.765411, y = 566.347601
+  Used kDa markers:
+    Marker set: KDA-003
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 130, source_x_abs = 183.000000, source_y_abs = 453.000000, gel_x_abs = 183.000000, gel_y_abs = 453.000000, y_in_crop = 21.153261
+    2. label = 100, source_x_abs = 177.000000, source_y_abs = 501.000000, gel_x_abs = 177.000000, gel_y_abs = 501.000000, y_in_crop = 69.262641
+
+Band 2: Middle left
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 689.515625, y = 755.681152
+  Crop size: width = 306, height = 103 pixels
+  Crop angle: 2.806370 degrees
+  Crop corners:
+    top-left: x = 689.515625, y = 755.681152
+    top-right: x = 995.148639, y = 770.663163
+    bottom-right: x = 990.105675, y = 873.539635
+    bottom-left: x = 684.472661, y = 858.557624
+  Used kDa markers:
+    Marker set: KDA-003
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 70, source_x_abs = 180.000000, source_y_abs = 771.000000, gel_x_abs = 180.000000, gel_y_abs = 771.000000, y_in_crop = 40.246778
+
+Band 3: Bottom left
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 697.258179, y = 1131.005005
+  Crop size: width = 279, height = 162 pixels
+  Crop angle: -1.231977 degrees
+  Crop corners:
+    top-left: x = 697.258179, y = 1131.005005
+    top-right: x = 976.193685, y = 1125.006392
+    bottom-right: x = 979.676751, y = 1286.968944
+    bottom-left: x = 700.741244, y = 1292.967557
+  Used kDa markers:
+    Marker set: KDA-003
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 40, source_x_abs = 669.000000, source_y_abs = 1173.000000, gel_x_abs = 669.000000, gel_y_abs = 1173.000000, y_in_crop = 41.377725
+    2. label = 25, source_x_abs = 675.000000, source_y_abs = 1257.000000, gel_x_abs = 675.000000, gel_y_abs = 1257.000000, y_in_crop = 125.487310
+
+Band 4: Top right
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 1665.000000, y = 465.272919
+  Crop size: width = 267, height = 107 pixels
+  Crop angle: 0.000000 degrees
+  Crop corners:
+    top-left: x = 1665.000000, y = 465.272919
+    top-right: x = 1932.000000, y = 465.272919
+    bottom-right: x = 1932.000000, y = 572.272919
+    bottom-left: x = 1665.000000, y = 572.272919
+  Used kDa markers:
+    Marker set: KDA-004
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 120, source_x_abs = 1953.000000, source_y_abs = 495.000000, gel_x_abs = 1953.000000, gel_y_abs = 495.000000, y_in_crop = 29.727081
+    2. label = 100, source_x_abs = 1953.000000, source_y_abs = 540.000000, gel_x_abs = 1953.000000, gel_y_abs = 540.000000, y_in_crop = 74.727081
+
+Band 5: Middle right
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 1644.429743, y = 843.963163
+  Crop size: width = 276, height = 76 pixels
+  Crop angle: 0.63 degrees
+  Crop corners:
+    top-left: x = 1919.587402, y = 922.958496
+    top-right: x = 1643.603705, y = 919.958673
+    bottom-right: x = 1644.429743, y = 843.963163
+    bottom-left: x = 1920.413441, y = 846.962985
+  Used kDa markers:
+    Marker set: KDA-004
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 70, source_x_abs = 1938.000000, source_y_abs = 864.000000, gel_x_abs = 1938.000000, gel_y_abs = 864.000000, y_in_crop = 59.155139
+
+Band 6: Bottom Right
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_blot_1.0sec.tif
+  Source dimensions: 2456 x 1831 pixels
+  Crop origin: x = 1409.002563, y = 1177.262939
+  Crop size: width = 312, height = 207 pixels
+  Crop angle: -0.550904 degrees
+  Crop corners:
+    top-left: x = 1409.002563, y = 1177.262939
+    top-right: x = 1720.988141, y = 1174.263078
+    bottom-right: x = 1722.978434, y = 1381.253510
+    bottom-left: x = 1410.992856, y = 1384.253371
+  Used kDa markers:
+    Marker set: KDA-004
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Several membranes\Several membranes_marker1851.tif
+    Marker source dimensions: 2456 x 1831 pixels
+    Gel dimensions: 2456 x 1831 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 40, source_x_abs = 1743.000000, source_y_abs = 1194.000000, gel_x_abs = 1743.000000, gel_y_abs = 1194.000000, y_in_crop = 19.947652
+    2. label = 25, source_x_abs = 1743.000000, source_y_abs = 1248.000000, gel_x_abs = 1743.000000, gel_y_abs = 1248.000000, y_in_crop = 73.945156
+    3. label = 10, source_x_abs = 1746.000000, source_y_abs = 1296.000000, gel_x_abs = 1746.000000, gel_y_abs = 1296.000000, y_in_crop = 121.971782
+

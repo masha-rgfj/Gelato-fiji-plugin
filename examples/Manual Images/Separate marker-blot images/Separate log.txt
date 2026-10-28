@@ -1,0 +1,46 @@
+GelAnno Coordinate Log
+Log format version: 1
+Plugin version: 1.0.0
+
+Coordinate convention:
+  Origin: top-left image pixel
+  X direction: right
+  Y direction: down
+  Crop corners: top-left, top-right, bottom-right, bottom-left
+  Angles: degrees clockwise in image coordinates
+
+Global kDa marker sets:
+KDA-001:
+  Source type: kDa marker image
+  Source image: D:\TAU\LCRB\wbtools\Test images\Markers 2026-06-23 12h09m39s.tif
+  Source dimensions: 2125 x 1700 pixels
+  Markers:
+    1. label = 55, x_abs = 1161.000000, y_abs = 855.000000
+    2. label = 40, x_abs = 1161.000000, y_abs = 909.000000
+    3. label = 35, x_abs = 1161.000000, y_abs = 945.000000
+    4. label = 25, x_abs = 1170.000000, y_abs = 984.000000
+    5. label = 15, x_abs = 1161.000000, y_abs = 1047.000000
+
+Crops in figure:
+Band 1: a-ELAVL1
+  Source image: D:\TAU\LCRB\wbtools\Test images\Blot 2026-06-23 12h10m17s.tif
+  Source dimensions: 2125 x 1700 pixels
+  Crop origin: x = 1172.666626, y = 808.571472
+  Crop size: width = 334, height = 201 pixels
+  Crop angle: -3.608469 degrees
+  Crop corners:
+    top-left: x = 1172.666626, y = 808.571472
+    top-right: x = 1506.004450, y = 787.550167
+    bottom-right: x = 1518.654996, y = 988.151672
+    bottom-left: x = 1185.317172, y = 1009.172977
+  Used kDa markers:
+    Marker set: KDA-001
+    Marker source image: D:\TAU\LCRB\wbtools\Test images\Markers 2026-06-23 12h09m39s.tif
+    Marker source dimensions: 2125 x 1700 pixels
+    Gel dimensions: 2125 x 1700 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 55, source_x_abs = 1161.000000, source_y_abs = 855.000000, gel_x_abs = 1161.000000, gel_y_abs = 855.000000, y_in_crop = 45.602206
+    2. label = 40, source_x_abs = 1161.000000, source_y_abs = 909.000000, gel_x_abs = 1161.000000, gel_y_abs = 909.000000, y_in_crop = 99.495147
+    3. label = 35, source_x_abs = 1161.000000, source_y_abs = 945.000000, gel_x_abs = 1161.000000, gel_y_abs = 945.000000, y_in_crop = 135.423775
+    4. label = 25, source_x_abs = 1170.000000, source_y_abs = 984.000000, gel_x_abs = 1170.000000, gel_y_abs = 984.000000, y_in_crop = 174.912898
+

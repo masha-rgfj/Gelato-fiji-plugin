@@ -75,6 +75,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.Arrays;
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
@@ -89,6 +90,8 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JSpinner;
@@ -110,7 +113,7 @@ import org.scijava.plugin.Plugin;
 
 @Plugin(
         type = Command.class,
-        menuPath = "Plugins>Gelato>Gelato 1.0.2")
+        menuPath = "Plugins>Gelato>Gelato 1.1.1")
 public class Gelato implements Command {
     @Override
     public void run() {
@@ -133,7 +136,7 @@ public class Gelato implements Command {
         private static final float A4_PAGE_HEIGHT_PT = 841.8898f;
         private static final int TOOL_BUTTON_W = 220;
         private static final int TOOL_BUTTON_H = 30;
-        private static final String VERSION = "1.0.2";
+        private static final String VERSION = "1.1.1";
         private static final int LOG_FORMAT_VERSION = 1;
         private static final double CROP_GEOMETRY_AGREEMENT_TOLERANCE = 1.0;
         private static final double MARKER_COORDINATE_AGREEMENT_TOLERANCE = 1.0;
@@ -243,6 +246,106 @@ public class Gelato implements Command {
         private final List<LineAnnotation> lineClipboard =
                 new ArrayList<LineAnnotation>();
         private int linePasteGeneration;
+        private static final int HISTORY_LIMIT = 100;
+        private final List<FigureEdit> undoHistory = new ArrayList<FigureEdit>();
+        private final List<FigureEdit> redoHistory = new ArrayList<FigureEdit>();
+        private FigureState editBefore;
+        private String editDescription;
+        private int editDepth;
+
+        private void beginFigureEdit(String description) {
+            if (editDepth++ == 0) {
+                editBefore = new FigureState(this);
+                editDescription = description;
+            }
+        }
+
+        private void endFigureEdit() {
+            if (editDepth <= 0 || --editDepth != 0) {
+                return;
+            }
+            FigureState after = new FigureState(this);
+            if (!editBefore.signature.equals(after.signature)) {
+                undoHistory.add(new FigureEdit(editDescription, editBefore, after));
+                if (undoHistory.size() > HISTORY_LIMIT) {
+                    undoHistory.remove(0);
+                }
+                redoHistory.clear();
+            }
+            editBefore = null;
+            editDescription = null;
+        }
+
+        private void undoFigureEdit() {
+            restoreFigureEdit(false);
+        }
+
+        private void redoFigureEdit() {
+            restoreFigureEdit(true);
+        }
+
+        private void restoreFigureEdit(boolean redo) {
+            if (figureCanvas != null) {
+                figureCanvas.finishHistoryGesture();
+                figureCanvas.cancelPendingLineDrawing();
+            }
+            if (editDepth != 0) {
+                return;
+            }
+            List<FigureEdit> source = redo ? redoHistory : undoHistory;
+            if (source.isEmpty()) {
+                setStatus(redo ? "Nothing to redo." : "Nothing to undo.");
+                return;
+            }
+            FigureEdit edit = source.remove(source.size() - 1);
+            (redo ? edit.after : edit.before).restore(this);
+            (redo ? undoHistory : redoHistory).add(edit);
+            if (swapTickSidesCheckBox != null) {
+                swapTickSidesCheckBox.setSelected(tickSidesSwapped);
+            }
+            updateCropSizeButtons();
+            updateAnnotationFontReadout();
+            if (figureCanvas != null) {
+                figureCanvas.refreshLayout();
+            }
+            setStatus((redo ? "Redid: " : "Undid: ") + edit.description + ".");
+        }
+
+        private void installFigureHistoryBindings(JComponent component, int condition) {
+            for (final boolean redo : new boolean[] { false, true }) {
+                String name = redo ? "figure_redo" : "figure_undo";
+                component.getInputMap(condition).put(KeyStroke.getKeyStroke(
+                        redo ? KeyEvent.VK_Y : KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), name);
+                component.getActionMap().put(name, new AbstractAction() {
+                    @Override
+                    public void actionPerformed(ActionEvent event) {
+                        Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                                .getFocusOwner();
+                        if (!(focus instanceof javax.swing.text.JTextComponent)) {
+                            restoreFigureEdit(redo);
+                        }
+                    }
+                });
+            }
+        }
+
+        private static void installTextUndo(final javax.swing.text.JTextComponent text) {
+            final javax.swing.undo.UndoManager history = new javax.swing.undo.UndoManager();
+            text.getDocument().addUndoableEditListener(history);
+            for (final boolean redo : new boolean[] { false, true }) {
+                String name = redo ? "text_redo" : "text_undo";
+                text.getInputMap().put(KeyStroke.getKeyStroke(redo ? KeyEvent.VK_Y
+                        : KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), name);
+                text.getActionMap().put(name, new AbstractAction() {
+                    @Override
+                    public void actionPerformed(ActionEvent event) {
+                        if (redo ? history.canRedo() : history.canUndo()) {
+                            if (redo) history.redo(); else history.undo();
+                        }
+                    }
+                });
+            }
+        }
 
         public Controller() {
             this(TITLE);
@@ -263,6 +366,7 @@ public class Gelato implements Command {
         private void buildUi() {
             frame = new JFrame(windowTitle);
             frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            installFigureHistoryBindings(frame.getRootPane(), JComponent.WHEN_IN_FOCUSED_WINDOW);
             frame.addWindowListener(new WindowAdapter() {
                 @Override
                 public void windowClosed(WindowEvent event) {
@@ -431,6 +535,15 @@ public class Gelato implements Command {
         }
 
         private void setTickSidesSwapped(boolean swapped) {
+            beginFigureEdit("swap tick sides");
+            try {
+                setTickSidesSwappedWithoutHistory(swapped);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void setTickSidesSwappedWithoutHistory(boolean swapped) {
             tickSidesSwapped = swapped;
             if (swapTickSidesCheckBox != null) {
                 swapTickSidesCheckBox.setSelected(swapped);
@@ -803,6 +916,15 @@ public class Gelato implements Command {
         }
 
         private void addSampleLabel(BandCrop band, double xFraction) {
+            beginFigureEdit("add sample label");
+            try {
+                addSampleLabelWithoutHistory(band, xFraction);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void addSampleLabelWithoutHistory(BandCrop band, double xFraction) {
             if (band == null) {
                 return;
             }
@@ -825,6 +947,15 @@ public class Gelato implements Command {
         }
 
         private void addBandTick(BandCrop band, double yFraction) {
+            beginFigureEdit("add band tick");
+            try {
+                addBandTickWithoutHistory(band, yFraction);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void addBandTickWithoutHistory(BandCrop band, double yFraction) {
             if (band == null) {
                 return;
             }
@@ -844,6 +975,15 @@ public class Gelato implements Command {
         }
 
         private void addFreeText(double anchorX, double anchorY) {
+            beginFigureEdit("add free text");
+            try {
+                addFreeTextWithoutHistory(anchorX, anchorY);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void addFreeTextWithoutHistory(double anchorX, double anchorY) {
             SampleLabelDialogResult result = showAngleTextDialog(
                     "Add Free Text", "Text:", "", defaultFreeTextAngleDeg,
                     defaultFreeTextFontSize, true);
@@ -863,6 +1003,15 @@ public class Gelato implements Command {
         }
 
         private void editTextAnnotation(TextAnnotation annotation) {
+            beginFigureEdit("edit annotation");
+            try {
+                editTextAnnotationWithoutHistory(annotation);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void editTextAnnotationWithoutHistory(TextAnnotation annotation) {
             if (annotation == null) {
                 return;
             }
@@ -1024,6 +1173,7 @@ public class Gelato implements Command {
                     multiline ? 4 : 1, 30);
             // Use the same font as Fiji's existing standard input dialogs.
             textArea.setFont(new JTextField().getFont());
+            installTextUndo(textArea);
             textArea.setLineWrap(false);
             textArea.setWrapStyleWord(false);
             textArea.setFocusTraversalKeysEnabled(true);
@@ -1111,6 +1261,15 @@ public class Gelato implements Command {
         }
 
         private void adjustAnnotationFont(float delta) {
+            beginFigureEdit("resize text");
+            try {
+                adjustAnnotationFontWithoutHistory(delta);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void adjustAnnotationFontWithoutHistory(float delta) {
             List<TextAnnotation> selected = figureCanvas == null
                     ? Collections.<TextAnnotation>emptyList()
                     : figureCanvas.selectedTextAnnotations();
@@ -1220,6 +1379,15 @@ public class Gelato implements Command {
         }
 
         private void pasteCopiedLines() {
+            beginFigureEdit("paste lines");
+            try {
+                pasteCopiedLinesWithoutHistory();
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void pasteCopiedLinesWithoutHistory() {
             if (figureCanvas == null || lineClipboard.isEmpty()) {
                 setStatus("Copy an H-line or V-line first.");
                 return;
@@ -1255,6 +1423,15 @@ public class Gelato implements Command {
         }
 
         private void deleteSelectedAnnotations() {
+            beginFigureEdit("delete annotations");
+            try {
+                deleteSelectedAnnotationsWithoutHistory();
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void deleteSelectedAnnotationsWithoutHistory() {
             if (figureCanvas == null) {
                 return;
             }
@@ -1685,6 +1862,15 @@ public class Gelato implements Command {
         }
 
         private void startOrConfirmCrop() {
+            beginFigureEdit("add crop");
+            try {
+                startOrConfirmCropWithoutHistory();
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void startOrConfirmCropWithoutHistory() {
             if (gelImp == null) {
                 JOptionPane.showMessageDialog(frame, "Open a gel image first.",
                         "No image", JOptionPane.WARNING_MESSAGE);
@@ -2008,6 +2194,15 @@ public class Gelato implements Command {
         }
 
         private void resizeSelectedBand(double factor) {
+            beginFigureEdit("resize crop");
+            try {
+                resizeSelectedBandWithoutHistory(factor);
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void resizeSelectedBandWithoutHistory(double factor) {
             BandCrop band = selectedBand;
             if (band == null) {
                 setStatus("Select a crop before changing its size.");
@@ -2033,6 +2228,15 @@ public class Gelato implements Command {
         }
 
         private void clearFigure() {
+            beginFigureEdit("clear figure");
+            try {
+                clearFigureWithoutHistory();
+            } finally {
+                endFigureEdit();
+            }
+        }
+
+        private void clearFigureWithoutHistory() {
             setAnnotationMode(AnnotationMode.NORMAL);
             if (figureCanvas != null) {
                 figureCanvas.clearAnnotationSelection();
@@ -4530,6 +4734,129 @@ public class Gelato implements Command {
         }
     }
 
+    /** Snapshot values are independent; original object identities retain crop attachments.
+     * Raster data and immutable source/calibration references are never copied or restored. */
+    private static final class FigureState {
+        final List<BandState> bands = new ArrayList<BandState>();
+        final List<TextState> freeTexts = new ArrayList<TextState>();
+        final List<LineState> lines = new ArrayList<LineState>();
+        final List<Object> signature = new ArrayList<Object>();
+        final List<FigureAnnotation> selection;
+        final BandCrop selectedBand;
+        final boolean swapped;
+        final double[] defaults;
+
+        FigureState(Controller controller) {
+            swapped = controller.tickSidesSwapped;
+            defaults = new double[] { controller.defaultSampleAngleDeg,
+                controller.defaultFreeTextAngleDeg, controller.defaultKdaFontSize,
+                controller.defaultBandNameFontSize, controller.defaultSampleFontSize,
+                controller.defaultBandTickFontSize, controller.defaultFreeTextFontSize };
+            signature.add(swapped);
+            for (double value : defaults) signature.add(value);
+            for (BandCrop band : controller.bands) bands.add(new BandState(band, signature));
+            signature.add("free text");
+            for (TextAnnotation text : controller.freeTextAnnotations) {
+                freeTexts.add(new TextState(text, signature));
+            }
+            signature.add("lines");
+            for (LineAnnotation line : controller.lineAnnotations) lines.add(new LineState(line, signature));
+            selectedBand = controller.selectedBand;
+            selection = controller.figureCanvas == null ? Collections.<FigureAnnotation>emptyList()
+                    : new ArrayList<FigureAnnotation>(controller.figureCanvas.selectedAnnotations);
+        }
+
+        void restore(Controller controller) {
+            controller.bands.clear();
+            for (BandState state : bands) {
+                state.restore();
+                controller.bands.add(state.band);
+            }
+            controller.freeTextAnnotations.clear();
+            for (TextState state : freeTexts) {
+                state.restore();
+                controller.freeTextAnnotations.add(state.text);
+            }
+            controller.lineAnnotations.clear();
+            for (LineState state : lines) {
+                state.restore();
+                controller.lineAnnotations.add(state.line);
+            }
+            controller.tickSidesSwapped = swapped;
+            controller.defaultSampleAngleDeg = defaults[0];
+            controller.defaultFreeTextAngleDeg = defaults[1];
+            controller.defaultKdaFontSize = (float)defaults[2];
+            controller.defaultBandNameFontSize = (float)defaults[3];
+            controller.defaultSampleFontSize = (float)defaults[4];
+            controller.defaultBandTickFontSize = (float)defaults[5];
+            controller.defaultFreeTextFontSize = (float)defaults[6];
+            controller.selectedBand = controller.bands.contains(selectedBand) ? selectedBand : null;
+            if (controller.figureCanvas != null) {
+                controller.figureCanvas.replaceAnnotationSelection(selection);
+            }
+        }
+    }
+
+    private static final class BandState {
+        final BandCrop band;
+        final int width;
+        final double x, y;
+        final List<TextState> texts = new ArrayList<TextState>();
+        BandState(BandCrop band, List<Object> signature) {
+            this.band = band;
+            width = band.displayWidth; x = band.xOffset; y = band.yOffset;
+            signature.addAll(Arrays.asList(band, width, x, y));
+            for (TextAnnotation text : band.textAnnotations) texts.add(new TextState(text, signature));
+            signature.add("end crop");
+        }
+        void restore() {
+            band.displayWidth = width; band.xOffset = x; band.yOffset = y;
+            band.textAnnotations.clear();
+            for (TextState state : texts) {
+                state.restore(); band.textAnnotations.add(state.text);
+            }
+        }
+    }
+
+    private static final class TextState {
+        final TextAnnotation text;
+        final String content;
+        final double[] values;
+        TextState(TextAnnotation text, List<Object> signature) {
+            this.text = text; content = text.text;
+            values = new double[] { text.fontSize, text.angleDeg, text.sampleXFraction,
+                text.bandYFraction, text.anchorX, text.anchorY, text.offsetX, text.offsetY };
+            signature.add(text); signature.add(content);
+            for (double value : values) signature.add(value);
+        }
+        void restore() {
+            text.text = content; text.fontSize = (float)values[0]; text.angleDeg = values[1];
+            text.sampleXFraction = values[2]; text.bandYFraction = values[3];
+            text.anchorX = values[4]; text.anchorY = values[5];
+            text.offsetX = values[6]; text.offsetY = values[7];
+        }
+    }
+
+    private static final class LineState {
+        final LineAnnotation line;
+        final double x1, y1, x2, y2;
+        LineState(LineAnnotation line, List<Object> signature) {
+            this.line = line; x1 = line.x1; y1 = line.y1; x2 = line.x2; y2 = line.y2;
+            signature.addAll(Arrays.asList(line, x1, y1, x2, y2));
+        }
+        void restore() {
+            line.x1 = x1; line.y1 = y1; line.x2 = x2; line.y2 = y2;
+        }
+    }
+
+    private static final class FigureEdit {
+        final String description;
+        final FigureState before, after;
+        FigureEdit(String description, FigureState before, FigureState after) {
+            this.description = description; this.before = before; this.after = after;
+        }
+    }
+
     private enum AnnotationMode {
         NORMAL,
         ADD_SAMPLE_LABELS,
@@ -4742,13 +5069,14 @@ public class Gelato implements Command {
         final double pivotY;
         final double screenRotationRadians;
         final Shape textHitShape;
+        final Shape textBoundsShape;
         final Line2D.Double leaderLine;
         final Shape hitShape;
 
         AnnotationLayout(TextAnnotation annotation, Font font,
                 String[] textLines, double[] drawXs, double[] baselineYs,
                 double pivotX, double pivotY,
-                double screenRotationRadians, Shape textHitShape,
+                double screenRotationRadians, Shape textHitShape, Shape textBoundsShape,
                 Line2D.Double leaderLine) {
             this.annotation = annotation;
             this.font = font;
@@ -4756,6 +5084,7 @@ public class Gelato implements Command {
             this.pivotY = pivotY;
             this.screenRotationRadians = screenRotationRadians;
             this.textHitShape = textHitShape;
+            this.textBoundsShape = textBoundsShape;
             this.leaderLine = leaderLine;
             if (leaderLine == null) {
                 this.hitShape = textHitShape;
@@ -4816,6 +5145,7 @@ public class Gelato implements Command {
         private java.awt.geom.Point2D.Double dragLast;
         private BandCrop dragBand;
         private boolean draggingAnnotations;
+        private boolean historyGesture;
         private LineAnnotation resizingLine;
         private AnnotationHitPart resizingLinePart;
         private java.awt.geom.Point2D.Double lineDrawStart;
@@ -4833,11 +5163,15 @@ public class Gelato implements Command {
             setBackground(WORKSPACE_COLOR);
             setFocusable(true);
             installMovementBindings();
+            controller.installFigureHistoryBindings(this, JComponent.WHEN_FOCUSED);
 
             MouseAdapter mouse = new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent event) {
                     requestFocusInWindow();
+                    if (showAlignmentPopup(event)) {
+                        return;
+                    }
                     if (event.getButton() != MouseEvent.BUTTON1) {
                         return;
                     }
@@ -4881,11 +5215,15 @@ public class Gelato implements Command {
                     }
                     if (controller.annotationMode == AnnotationMode.EDIT_ANNOTATIONS) {
                         beginAnnotationPress(event, documentPoint);
+                        if (draggingAnnotations || resizingLine != null) {
+                            startHistoryGesture(resizingLine != null ? "resize line" : "move annotations");
+                        }
                         return;
                     }
                     BandCrop band = bandAt(documentPoint.x, documentPoint.y);
                     controller.selectBand(band);
                     if (band != null) {
+                        startHistoryGesture("move crop");
                         dragBand = band;
                         dragLast = documentPoint;
                     }
@@ -4934,6 +5272,8 @@ public class Gelato implements Command {
 
                 @Override
                 public void mouseReleased(MouseEvent event) {
+                    showAlignmentPopup(event);
+                    finishHistoryGesture();
                     if (event.getButton() == MouseEvent.BUTTON1
                             && (controller.annotationMode == AnnotationMode.DRAW_H_LINE
                             || controller.annotationMode == AnnotationMode.DRAW_V_LINE)) {
@@ -4984,6 +5324,26 @@ public class Gelato implements Command {
             });
         }
 
+        private void startHistoryGesture(String description) {
+            if (historyGesture) {
+                return;
+            }
+            controller.beginFigureEdit(description);
+            historyGesture = true;
+        }
+
+        private void finishHistoryGesture() {
+            if (historyGesture) {
+                historyGesture = false;
+                controller.endFigureEdit();
+            }
+            dragBand = null;
+            dragLast = null;
+            draggingAnnotations = false;
+            resizingLine = null;
+            resizingLinePart = null;
+        }
+
         private void scrollContainingPane(MouseWheelEvent event) {
             JScrollPane scrollPane = (JScrollPane) SwingUtilities.getAncestorOfClass(
                     JScrollPane.class, this);
@@ -5014,6 +5374,10 @@ public class Gelato implements Command {
         }
 
         private void installMovementBindings() {
+            bindAlignmentCommand("align_x_centers", KeyEvent.VK_H, 0);
+            bindAlignmentCommand("align_text_bottoms", KeyEvent.VK_V, 1);
+            bindAlignmentCommand("distribute_horizontal", KeyEvent.VK_D, 2);
+            bindAlignmentCommand("distribute_vertical", KeyEvent.VK_B, 3);
             bindMovement("annotation_left", KeyEvent.VK_LEFT, 0, -1, 0);
             bindMovement("annotation_right", KeyEvent.VK_RIGHT, 0, 1, 0);
             bindMovement("annotation_up", KeyEvent.VK_UP, 0, 0, -1);
@@ -5054,6 +5418,258 @@ public class Gelato implements Command {
                             controller.pasteCopiedLines();
                         }
                     });
+        }
+
+        private static final String[] ALIGNMENT_LABELS = {
+            "Align X centers", "Align text bottoms",
+            "Distribute horizontally", "Distribute vertically"
+        };
+        private static final char[] ALIGNMENT_SHORTCUTS = { 'h', 'v', 'd', 'b' };
+
+        private void bindAlignmentCommand(String key, int keyCode, final int operation) {
+            bindAnnotationCommand(key, keyCode, 0, new Runnable() {
+                @Override
+                public void run() {
+                    arrangeSelectedText(operation);
+                }
+            });
+        }
+
+        private List<TextAnnotation> selectedArrangementText() {
+            List<TextAnnotation> result = new ArrayList<TextAnnotation>();
+            for (TextAnnotation text : selectedTextAnnotations()) {
+                if (text.kind == AnnotationKind.SAMPLE_LABEL
+                        || text.kind == AnnotationKind.FREE_TEXT) {
+                    result.add(text);
+                }
+            }
+            return result;
+        }
+
+        private String arrangementUnavailableReason(int operation) {
+            List<TextAnnotation> texts = selectedArrangementText();
+            if (texts.size() < (operation >= 2 ? 3 : 2)) {
+                return operation >= 2
+                        ? "Select at least three sample names or free text objects."
+                        : "Select at least two sample names or free text objects.";
+            }
+            if (operation == 0) {
+                boolean hasFreeText = false;
+                for (TextAnnotation text : texts) {
+                    hasFreeText |= text.kind == AnnotationKind.FREE_TEXT;
+                }
+                if (!hasFreeText) {
+                    return "Sample names keep their X positions during alignment; select free text too.";
+                }
+            }
+            return null;
+        }
+
+        private boolean showAlignmentPopup(MouseEvent event) {
+            if (!event.isPopupTrigger()
+                    || controller.annotationMode != AnnotationMode.EDIT_ANNOTATIONS) {
+                return false;
+            }
+            java.awt.geom.Point2D.Double point = viewToDocument(event.getPoint());
+            AnnotationHit hit = annotationHitAt(point.x, point.y);
+            // Right-click on an existing selection preserves the full selection.
+            if (hit != null && !selectedAnnotations.contains(hit.annotation)) {
+                selectedAnnotations.clear();
+                selectedAnnotations.add(hit.annotation);
+                controller.updateAnnotationFontReadout();
+                repaint();
+            }
+            draggingAnnotations = false;
+            dragLast = null;
+            alignmentPopup().show(this, event.getX(), event.getY());
+            return true;
+        }
+
+        private JPopupMenu alignmentPopup() {
+            JPopupMenu menu = new JPopupMenu();
+            for (int i = 0; i < ALIGNMENT_LABELS.length; i++) {
+                final int operation = i;
+                JMenuItem item = new JMenuItem(ALIGNMENT_LABELS[i]);
+                // Typed-character accelerators display lowercase and also work
+                // while the popup is open, without needing Shift.
+                item.setAccelerator(KeyStroke.getKeyStroke(ALIGNMENT_SHORTCUTS[i]));
+                String reason = arrangementUnavailableReason(i);
+                item.setEnabled(reason == null);
+                item.setToolTipText(reason != null ? reason : i == 1
+                        ? "Align baselines for unrotated text and bottom edges for rotated text."
+                        : i >= 2
+                        ? "Keep the outermost objects fixed; space sample anchors or free-text gaps evenly."
+                        : "Align free-text centers to selected sample positions or the free-text selection center.");
+                item.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent action) {
+                        arrangeSelectedText(operation);
+                        requestFocusInWindow();
+                    }
+                });
+                menu.add(item);
+            }
+            return menu;
+        }
+
+        private AnnotationLayout arrangementLayout(TextAnnotation text) {
+            return annotationLayout(text, text.owner == null ? null : rectForBand(text.owner));
+        }
+
+        private double textBottom(AnnotationLayout layout) {
+            if (Math.abs(layout.screenRotationRadians) < 1e-10) {
+                return layout.lines.get(layout.lines.size() - 1).baselineStartY;
+            }
+            return layout.textBoundsShape.getBounds2D().getMaxY();
+        }
+
+        private void arrangeSelectedText(int operation) {
+            controller.beginFigureEdit(ALIGNMENT_LABELS[operation]);
+            try {
+                arrangeSelectedTextWithoutHistory(operation);
+            } finally {
+                controller.endFigureEdit();
+            }
+        }
+
+        private void arrangeSelectedTextWithoutHistory(int operation) {
+            String reason = arrangementUnavailableReason(operation);
+            if (reason != null) {
+                controller.setStatus(reason);
+                return;
+            }
+            List<TextAnnotation> texts = selectedArrangementText();
+            final Map<TextAnnotation, AnnotationLayout> layouts =
+                    new LinkedHashMap<TextAnnotation, AnnotationLayout>();
+            Map<TextAnnotation, Double> deltas = new LinkedHashMap<TextAnnotation, Double>();
+            for (TextAnnotation text : texts) {
+                layouts.put(text, arrangementLayout(text));
+            }
+            final boolean horizontal = operation == 0 || operation == 2;
+            if (operation == 0) {
+                double minimum = Double.POSITIVE_INFINITY;
+                double maximum = Double.NEGATIVE_INFINITY;
+                boolean hasSamples = false;
+                for (TextAnnotation text : texts) {
+                    if (text.kind == AnnotationKind.SAMPLE_LABEL) {
+                        double x = layouts.get(text).pivotX;
+                        minimum = Math.min(minimum, x);
+                        maximum = Math.max(maximum, x);
+                        hasSamples = true;
+                    }
+                }
+                if (!hasSamples) {
+                    for (AnnotationLayout layout : layouts.values()) {
+                        Rectangle2D bounds = layout.textBoundsShape.getBounds2D();
+                        minimum = Math.min(minimum, bounds.getMinX());
+                        maximum = Math.max(maximum, bounds.getMaxX());
+                    }
+                }
+                double target = (minimum + maximum) / 2.0;
+                for (TextAnnotation text : texts) {
+                    if (text.kind == AnnotationKind.FREE_TEXT) {
+                        deltas.put(text, target - layouts.get(text)
+                                .textBoundsShape.getBounds2D().getCenterX());
+                    }
+                }
+            } else if (operation == 1) {
+                double target = Double.NEGATIVE_INFINITY;
+                for (AnnotationLayout layout : layouts.values()) {
+                    target = Math.max(target, textBottom(layout));
+                }
+                for (TextAnnotation text : texts) {
+                    deltas.put(text, target - textBottom(layouts.get(text)));
+                }
+            } else {
+                boolean hasSamples = false;
+                for (TextAnnotation text : texts) {
+                    hasSamples |= text.kind == AnnotationKind.SAMPLE_LABEL;
+                }
+                final boolean useAnchors = hasSamples;
+                Collections.sort(texts, new Comparator<TextAnnotation>() {
+                    @Override
+                    public int compare(TextAnnotation first, TextAnnotation second) {
+                        return Double.compare(distributionPosition(layouts.get(first),
+                                horizontal, useAnchors), distributionPosition(layouts.get(second),
+                                horizontal, useAnchors));
+                    }
+                });
+                AnnotationLayout first = layouts.get(texts.get(0));
+                AnnotationLayout last = layouts.get(texts.get(texts.size() - 1));
+                double start = distributionPosition(first, horizontal, useAnchors);
+                double end = distributionPosition(last, horizontal, useAnchors);
+                double spacing;
+                if (useAnchors) {
+                    spacing = (end - start) / (texts.size() - 1);
+                } else {
+                    Rectangle2D endBounds = last.textBoundsShape.getBounds2D();
+                    double extent = (horizontal ? endBounds.getMaxX() : endBounds.getMaxY()) - start;
+                    for (AnnotationLayout layout : layouts.values()) {
+                        Rectangle2D bounds = layout.textBoundsShape.getBounds2D();
+                        extent -= horizontal ? bounds.getWidth() : bounds.getHeight();
+                    }
+                    spacing = extent / (texts.size() - 1);
+                    if (spacing < 0.0) {
+                        controller.setStatus("Not enough space for equal gaps; move the outermost text objects farther apart.");
+                        return;
+                    }
+                }
+                double next = start;
+                for (int i = 0; i < texts.size(); i++) {
+                    TextAnnotation text = texts.get(i);
+                    AnnotationLayout layout = layouts.get(text);
+                    deltas.put(text, i == 0 || i == texts.size() - 1 ? 0.0
+                            : next - distributionPosition(layout, horizontal, useAnchors));
+                    Rectangle2D bounds = layout.textBoundsShape.getBounds2D();
+                    next += spacing + (useAnchors ? 0.0
+                            : horizontal ? bounds.getWidth() : bounds.getHeight());
+                }
+            }
+            // Validate the whole operation before changing anything; partial clamping
+            // would break alignment or equal spacing.
+            for (Map.Entry<TextAnnotation, Double> entry : deltas.entrySet()) {
+                double delta = entry.getValue();
+                if (Math.abs(delta) < 1e-10) {
+                    continue;
+                }
+                Rectangle2D bounds = layouts.get(entry.getKey()).hitShape.getBounds2D();
+                double oldMin = horizontal ? bounds.getMinX() : bounds.getMinY();
+                double oldMax = horizontal ? bounds.getMaxX() : bounds.getMaxY();
+                double newMin = oldMin + delta;
+                double newMax = oldMax + delta;
+                double limit = horizontal ? ARTBOARD_WIDTH : ARTBOARD_HEIGHT;
+                if ((newMin < CONTENT_EDGE_GAP - 1e-6 && newMin < oldMin - 1e-6)
+                        || (newMax > limit - CONTENT_EDGE_GAP + 1e-6 && newMax > oldMax + 1e-6)) {
+                    controller.setStatus("Cannot arrange this selection within the artboard; move it inward first.");
+                    return;
+                }
+            }
+            for (Map.Entry<TextAnnotation, Double> entry : deltas.entrySet()) {
+                TextAnnotation text = entry.getKey();
+                double delta = entry.getValue();
+                if (horizontal && text.kind == AnnotationKind.SAMPLE_LABEL) {
+                    Rectangle rect = rectForBand(text.owner);
+                    // Update the actual lane anchor, including any earlier manual offset,
+                    // so it follows the crop when the crop width changes.
+                    text.sampleXFraction += (text.offsetX + delta) / rect.width;
+                    text.offsetX = 0.0;
+                } else if (horizontal) {
+                    text.offsetX += delta;
+                } else {
+                    text.offsetY += delta;
+                }
+            }
+            refreshLayout();
+            controller.setStatus(ALIGNMENT_LABELS[operation] + " applied.");
+        }
+
+        private double distributionPosition(AnnotationLayout layout,
+                boolean horizontal, boolean useAnchors) {
+            if (useAnchors) {
+                return horizontal ? layout.pivotX : layout.pivotY;
+            }
+            Rectangle2D bounds = layout.textBoundsShape.getBounds2D();
+            return horizontal ? bounds.getMinX() : bounds.getMinY();
         }
 
         private void bindAnnotationCommand(final String key, int keyCode,
@@ -5109,6 +5725,15 @@ public class Gelato implements Command {
         }
 
         private void finishLineDrawing(java.awt.geom.Point2D.Double documentPoint) {
+            controller.beginFigureEdit("draw line");
+            try {
+                finishLineDrawingWithoutHistory(documentPoint);
+            } finally {
+                controller.endFigureEdit();
+            }
+        }
+
+        private void finishLineDrawingWithoutHistory(java.awt.geom.Point2D.Double documentPoint) {
             if (lineDrawStart == null) {
                 return;
             }
@@ -5238,8 +5863,16 @@ public class Gelato implements Command {
             }
         }
 
-        private java.awt.geom.Point2D.Double moveSelectedAnnotations(
-                double requestedDx, double requestedDy) {
+        private java.awt.geom.Point2D.Double moveSelectedAnnotations(double requestedDx, double requestedDy) {
+            controller.beginFigureEdit("move annotations");
+            try {
+                return moveSelectedAnnotationsWithoutHistory(requestedDx, requestedDy);
+            } finally {
+                controller.endFigureEdit();
+            }
+        }
+
+        private java.awt.geom.Point2D.Double moveSelectedAnnotationsWithoutHistory(double requestedDx, double requestedDy) {
             double minimumDx = -Double.MAX_VALUE;
             double maximumDx = Double.MAX_VALUE;
             double minimumDy = -Double.MAX_VALUE;
@@ -5357,8 +5990,16 @@ public class Gelato implements Command {
                     && line.y2 >= inset && line.y2 <= ARTBOARD_HEIGHT - inset;
         }
 
-        private void resizeLineEndpoint(LineAnnotation line,
-                AnnotationHitPart part, java.awt.geom.Point2D.Double documentPoint) {
+        private void resizeLineEndpoint(LineAnnotation line, AnnotationHitPart part, java.awt.geom.Point2D.Double documentPoint) {
+            controller.beginFigureEdit("resize line");
+            try {
+                resizeLineEndpointWithoutHistory(line, part, documentPoint);
+            } finally {
+                controller.endFigureEdit();
+            }
+        }
+
+        private void resizeLineEndpointWithoutHistory(LineAnnotation line, AnnotationHitPart part, java.awt.geom.Point2D.Double documentPoint) {
             java.awt.geom.Point2D.Double point = clampToArtboard(documentPoint);
             if (line.orientation == LineOrientation.HORIZONTAL) {
                 if (part == AnnotationHitPart.START) {
@@ -5810,9 +6451,11 @@ public class Gelato implements Command {
             AffineTransform transform = AffineTransform.getRotateInstance(
                     rotation, pivotX, pivotY);
             Shape textHitShape = transform.createTransformedShape(padded);
+            Shape textBoundsShape = transform.createTransformedShape(new Rectangle2D.Double(
+                    blockLeft, blockTop, blockRight - blockLeft, blockBottom - blockTop));
             return new AnnotationLayout(annotation, font,
                     textLines, drawXs, baselineYs,
-                    pivotX, pivotY, rotation, textHitShape, leaderLine);
+                    pivotX, pivotY, rotation, textHitShape, textBoundsShape, leaderLine);
         }
 
         @Override

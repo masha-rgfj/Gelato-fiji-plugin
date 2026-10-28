@@ -1,0 +1,71 @@
+Gelato Coordinate Log
+Log format version: 1
+Plugin version: 1.0.0
+
+Coordinate convention:
+  Origin: top-left image pixel
+  X direction: right
+  Y direction: down
+  Crop corners: top-left, top-right, bottom-right, bottom-left
+  Angles: degrees clockwise in image coordinates
+
+Global kDa marker sets:
+KDA-001:
+  Source type: Gel image
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 protein S.tif
+  Source dimensions: 2244 x 1115 pixels
+  Markers:
+    1. label = 41, x_abs = 387.000000, y_abs = 480.000000
+    2. label = 32, x_abs = 384.000000, y_abs = 645.000000
+    3. label = 23, x_abs = 375.000000, y_abs = 786.000000
+
+KDA-002:
+  Source type: Gel image
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 a-HSP90cropped.tif
+  Source dimensions: 2244 x 1392 pixels
+  Markers:
+    1. label = 93, x_abs = 489.000000, y_abs = 429.000000
+    2. label = 68, x_abs = 498.000000, y_abs = 573.000000
+
+Crops in figure:
+Band 1: protein S
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 protein S.tif
+  Source dimensions: 2244 x 1115 pixels
+  Crop origin: x = 433.907288, y = 452.412659
+  Crop size: width = 1041, height = 379 pixels
+  Crop angle: -0.330231 degrees
+  Crop corners:
+    top-left: x = 433.907288, y = 452.412659
+    top-right: x = 1474.889997, y = 446.412758
+    bottom-right: x = 1477.074399, y = 825.406463
+    bottom-left: x = 436.091689, y = 831.406364
+  Used kDa markers:
+    Marker set: KDA-001
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 protein S.tif
+    Marker source dimensions: 2244 x 1115 pixels
+    Gel dimensions: 2244 x 1115 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 41, source_x_abs = 387.000000, source_y_abs = 480.000000, gel_x_abs = 387.000000, gel_y_abs = 480.000000, y_in_crop = 27.316529
+    2. label = 32, source_x_abs = 384.000000, source_y_abs = 645.000000, gel_x_abs = 384.000000, gel_y_abs = 645.000000, y_in_crop = 192.296497
+    3. label = 23, source_x_abs = 375.000000, source_y_abs = 786.000000, gel_x_abs = 375.000000, gel_y_abs = 786.000000, y_in_crop = 333.242283
+
+Band 2: HSP90
+  Source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 a-HSP90cropped.tif
+  Source dimensions: 2244 x 1392 pixels
+  Crop origin: x = 536.335938, y = 385.455536
+  Crop size: width = 1044, height = 231 pixels
+  Crop angle: -0.329282 degrees
+  Crop corners:
+    top-left: x = 536.335938, y = 385.455536
+    top-right: x = 1580.318697, y = 379.455635
+    bottom-right: x = 1581.646261, y = 610.451820
+    bottom-left: x = 537.663502, y = 616.451721
+  Used kDa markers:
+    Marker set: KDA-002
+    Marker source image: D:\TAU\LCRB\wbtool-fiji-plugin\examples\Manual Images\Overlayed marker-blot image\5-3.10 KO 13-18 a-HSP90cropped.tif
+    Marker source dimensions: 2244 x 1392 pixels
+    Gel dimensions: 2244 x 1392 pixels
+    Coordinate scale: x = 1.000000, y = 1.000000
+    1. label = 93, source_x_abs = 489.000000, source_y_abs = 429.000000, gel_x_abs = 489.000000, gel_y_abs = 429.000000, y_in_crop = 43.271704
+    2. label = 68, source_x_abs = 498.000000, source_y_abs = 573.000000, gel_x_abs = 498.000000, gel_y_abs = 573.000000, y_in_crop = 187.321049
+
