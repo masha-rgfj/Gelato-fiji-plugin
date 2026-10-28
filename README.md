@@ -1,9 +1,9 @@
-# Gelato v1.1.3
+# Gelato v1.1.4
 
 Gelato (former GelAnno or wbtools) is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
 Supported input: tif/tiff, png, jpg/jpeg
 
-Version 1.1.3 suggests available source files during reconstruction and keeps reconstruction details available in a nonblocking window. Coordinate logs remain at format version 2, as introduced in 1.1.2.
+Version 1.1.4 adds bulk sample-label editing using the existing annotation dialog.
 
 Installation for windows: put gelato-x.x.x.jar file in "plugins" folder of Fiji and enjoy!
 
@@ -50,7 +50,7 @@ New logs use **log format version 2** with a dedicated figure-name field:
 Gelato Coordinate Log
 Figure name: Figure 3B
 Log format version: 2
-Plugin version: 1.1.3
+Plugin version: 1.1.4
 ```
 
 **Save Log** saves to the associated coordinate-log file. When there is no associated file, or when **Save Log As...** is selected, Gelato asks for a figure name (prefilled with the current name) and suggests `figure name.txt`. The file's name can differ from the figure name. Characters unsuitable for filenames are replaced only in the suggested filename; the internal figure name is preserved. Save As requires confirmation before replacing an existing file. After a successful save, ordinary Save Log updates the associated file directly.

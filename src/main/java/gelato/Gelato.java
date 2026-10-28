@@ -111,7 +111,7 @@ import org.scijava.plugin.Plugin;
 
 @Plugin(
         type = Command.class,
-        menuPath = "Plugins>Gelato>Gelato 1.1.3")
+        menuPath = "Plugins>Gelato>Gelato 1.1.4")
 public class Gelato implements Command {
     @Override
     public void run() {
@@ -134,7 +134,7 @@ public class Gelato implements Command {
         private static final float A4_PAGE_HEIGHT_PT = 841.8898f;
         private static final int TOOL_BUTTON_W = 220;
         private static final int TOOL_BUTTON_H = 30;
-        private static final String VERSION = "1.1.3";
+        private static final String VERSION = "1.1.4";
         private static final int LOG_FORMAT_VERSION = 2;
         private static final double CROP_GEOMETRY_AGREEMENT_TOLERANCE = 1.0;
         private static final double MARKER_COORDINATE_AGREEMENT_TOLERANCE = 1.0;
@@ -1051,6 +1051,29 @@ public class Gelato implements Command {
                 setStatus("MW values can be selected for A-/A+ font resizing only.");
                 return;
             }
+            if (annotation.kind == AnnotationKind.SAMPLE_LABEL) {
+                List<TextAnnotation> samples = selectedSampleLabels(annotation);
+                if (samples.size() > 1) {
+                    List<String> names = new ArrayList<String>();
+                    Double angle = samples.get(0).angleDeg;
+                    Float size = samples.get(0).fontSize;
+                    for (TextAnnotation sample : samples) {
+                        names.add(sample.text);
+                        if (angle != null && Double.compare(angle, sample.angleDeg) != 0) angle = null;
+                        if (size != null && Float.compare(size, sample.fontSize) != 0) size = null;
+                    }
+                    AngleTextDialogResult result = showAngleTextsDialog(
+                            "Edit Sample Labels", "Sample names (left to right):",
+                            names, angle, size, true);
+                    if (result != null) {
+                        applySampleLabelEdits(samples, result);
+                        figureCanvas.refreshLayout();
+                        updateAnnotationFontReadout();
+                        setStatusWithArtboardWarning("Sample labels updated.");
+                    }
+                    return;
+                }
+            }
             if (annotation.kind == AnnotationKind.SAMPLE_LABEL
                     || annotation.kind == AnnotationKind.FREE_TEXT) {
                 SampleLabelDialogResult result = annotation.kind == AnnotationKind.SAMPLE_LABEL
@@ -1088,30 +1111,67 @@ public class Gelato implements Command {
                     initialAngleDeg, initialFontSize, true);
         }
 
+        private List<TextAnnotation> selectedSampleLabels(TextAnnotation clicked) {
+            List<TextAnnotation> samples = new ArrayList<TextAnnotation>();
+            if (figureCanvas != null) {
+                for (TextAnnotation text : figureCanvas.selectedTextAnnotations()) {
+                    if (text.kind == AnnotationKind.SAMPLE_LABEL) samples.add(text);
+                }
+            }
+            if (!samples.contains(clicked)) samples.add(clicked);
+            Collections.sort(samples, new Comparator<TextAnnotation>() {
+                @Override
+                public int compare(TextAnnotation first, TextAnnotation second) {
+                    return Double.compare(figureCanvas.arrangementLayout(first).pivotX,
+                            figureCanvas.arrangementLayout(second).pivotX);
+                }
+            });
+            return samples;
+        }
+
+        private void applySampleLabelEdits(List<TextAnnotation> samples, AngleTextDialogResult result) {
+            for (int i = 0; i < samples.size(); i++) {
+                TextAnnotation sample = samples.get(i);
+                sample.text = result.texts.get(i);
+                if (result.angleDeg != null) sample.angleDeg = result.angleDeg;
+                if (result.fontSize != null) sample.fontSize = result.fontSize;
+            }
+        }
+
         private SampleLabelDialogResult showAngleTextDialog(String title,
                 String textLabel, String initialText, double initialAngleDeg,
                 float initialFontSize, boolean multiline) {
-            JSpinner angleSpinner = new JSpinner(new SpinnerNumberModel(
-                    Double.valueOf(initialAngleDeg), Double.valueOf(-360.0),
-                    Double.valueOf(360.0), Double.valueOf(1.0)));
-            JSpinner fontSpinner = new JSpinner(new SpinnerNumberModel(
-                    Integer.valueOf(Math.round(clampAnnotationFontSize(initialFontSize))),
+            AngleTextDialogResult result = showAngleTextsDialog(title, textLabel,
+                    Collections.singletonList(initialText), initialAngleDeg, initialFontSize, multiline);
+            return result == null ? null : new SampleLabelDialogResult(
+                    result.texts.get(0), result.angleDeg, result.fontSize);
+        }
+
+        private AngleTextDialogResult showAngleTextsDialog(String title, String textLabel,
+                List<String> initialTexts, Double initialAngleDeg, Float initialFontSize,
+                boolean multiline) {
+            boolean bulk = initialTexts.size() > 1;
+            JSpinner angleSpinner = optionalNumberSpinner(initialAngleDeg,
+                    Double.valueOf(0), Double.valueOf(-360), Double.valueOf(360), Double.valueOf(1), bulk);
+            JSpinner fontSpinner = optionalNumberSpinner(initialFontSize == null ? null
+                    : Integer.valueOf(Math.round(clampAnnotationFontSize(initialFontSize))),
+                    Integer.valueOf(Math.round(defaultSampleFontSize)),
                     Integer.valueOf((int) MIN_ANNOTATION_FONT_SIZE),
-                    Integer.valueOf((int) MAX_ANNOTATION_FONT_SIZE), Integer.valueOf(1)));
+                    Integer.valueOf((int) MAX_ANNOTATION_FONT_SIZE), Integer.valueOf(1), bulk);
             JPanel optionsPanel = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
             optionsPanel.add(new JLabel("Angle (degrees):"));
             optionsPanel.add(angleSpinner);
             optionsPanel.add(new JLabel("Font size (pt):"));
             optionsPanel.add(fontSpinner);
-            String currentText = initialText == null ? "" : initialText;
+            List<String> currentTexts = new ArrayList<String>(initialTexts);
 
             while (true) {
-                String input = showFocusedTextEntryDialog(title, textLabel,
-                        currentText, multiline, optionsPanel);
+                List<String> input = showFocusedTextEntriesDialog(title, textLabel,
+                        currentTexts, multiline, optionsPanel);
                 if (input == null) {
                     return null;
                 }
-                currentText = input;
+                currentTexts = input;
                 try {
                     angleSpinner.commitEdit();
                     fontSpinner.commitEdit();
@@ -1120,28 +1180,58 @@ public class Gelato implements Command {
                             title, JOptionPane.WARNING_MESSAGE);
                     continue;
                 }
-                String text = normalizeAnnotationText(currentText).trim();
-                double angle = ((Number) angleSpinner.getValue()).doubleValue();
-                int fontSize = ((Number) fontSpinner.getValue()).intValue();
-                if (text.length() == 0) {
+                List<String> texts = new ArrayList<String>();
+                for (String text : currentTexts) texts.add(normalizeAnnotationText(text).trim());
+                Number angleValue = (Number) angleSpinner.getValue();
+                Number fontValue = (Number) fontSpinner.getValue();
+                Double angle = angleValue == null ? null : angleValue.doubleValue();
+                Float fontSize = fontValue == null ? null : clampAnnotationFontSize(fontValue.floatValue());
+                if (texts.contains("")) {
                     JOptionPane.showMessageDialog(frame, "Enter text.",
                             title, JOptionPane.WARNING_MESSAGE);
                     continue;
                 }
-                if (Double.isNaN(angle) || Double.isInfinite(angle)) {
+                if (angle != null && (Double.isNaN(angle) || Double.isInfinite(angle))) {
                     JOptionPane.showMessageDialog(frame, "Enter a finite angle.",
                             title, JOptionPane.WARNING_MESSAGE);
                     continue;
                 }
-                if (angle < -360.0 || angle > 360.0) {
+                if (angle != null && (angle < -360.0 || angle > 360.0)) {
                     JOptionPane.showMessageDialog(frame,
                             "Enter an angle from -360 to 360 degrees.",
                             title, JOptionPane.WARNING_MESSAGE);
                     continue;
                 }
-                return new SampleLabelDialogResult(text, angle,
-                        clampAnnotationFontSize(fontSize));
+                return new AngleTextDialogResult(texts, angle, fontSize);
             }
+        }
+
+        private static JSpinner optionalNumberSpinner(Number value, Number fallback,
+                Comparable minimum, Comparable maximum, Number step, final boolean allowMixed) {
+            JSpinner spinner = new JSpinner(new OptionalNumberModel(
+                    value == null ? fallback : value, fallback, minimum, maximum, step));
+            JSpinner.NumberEditor editor = new JSpinner.NumberEditor(spinner,
+                    fallback instanceof Integer ? "0" : "0.########");
+            javax.swing.text.NumberFormatter formatter = new javax.swing.text.NumberFormatter(editor.getFormat()) {
+                @Override
+                public String valueToString(Object value) throws java.text.ParseException {
+                    return value == null ? "Mixed" : super.valueToString(value);
+                }
+                @Override
+                public Object stringToValue(String text) throws java.text.ParseException {
+                    return allowMixed && (text.trim().isEmpty() || "Mixed".equalsIgnoreCase(text.trim()))
+                            ? null : super.stringToValue(text);
+                }
+            };
+            formatter.setValueClass(fallback.getClass());
+            formatter.setMinimum(minimum);
+            formatter.setMaximum(maximum);
+            editor.getTextField().setFormatterFactory(new javax.swing.text.DefaultFormatterFactory(formatter));
+            editor.getTextField().setColumns(8);
+            editor.getTextField().setToolTipText(allowMixed ? "Mixed: keep each label's existing value." : null);
+            spinner.setEditor(editor);
+            spinner.setValue(value);
+            return spinner;
         }
 
         private TextDialogResult showTextDialog(String title, String initialText,
@@ -1200,24 +1290,48 @@ public class Gelato implements Command {
 
         private String showFocusedTextEntryDialog(String title, String textLabel,
                 String initialText, boolean multiline, JComponent optionsPanel) {
-            final JTextArea textArea = new JTextArea(
-                    initialText == null ? "" : initialText,
-                    multiline ? 4 : 1, 30);
-            // Use the same font as Fiji's existing standard input dialogs.
-            textArea.setFont(new JTextField().getFont());
-            installTextUndo(textArea);
-            textArea.setLineWrap(false);
-            textArea.setWrapStyleWord(false);
-            textArea.setFocusTraversalKeysEnabled(true);
-            textArea.setFocusTraversalKeys(KeyboardFocusManager.FORWARD_TRAVERSAL_KEYS,
-                    Collections.singleton(KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0)));
-            textArea.setFocusTraversalKeys(KeyboardFocusManager.BACKWARD_TRAVERSAL_KEYS,
-                    Collections.singleton(KeyStroke.getKeyStroke(
-                            KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK)));
+            List<String> result = showFocusedTextEntriesDialog(title, textLabel,
+                    Collections.singletonList(initialText), multiline, optionsPanel);
+            return result == null ? null : result.get(0);
+        }
+
+        private List<String> showFocusedTextEntriesDialog(String title, String textLabel,
+                List<String> initialTexts, boolean multiline, JComponent optionsPanel) {
+            final List<JTextArea> textAreas = new ArrayList<JTextArea>();
+            JPanel entries = new JPanel();
+            entries.setLayout(new BoxLayout(entries, BoxLayout.Y_AXIS));
+            for (int i = 0; i < initialTexts.size(); i++) {
+                String initialText = initialTexts.get(i);
+                final JTextArea textArea = new JTextArea(initialText == null ? "" : initialText,
+                        multiline ? (initialTexts.size() == 1 ? 4 : 2) : 1, 30);
+                // Use the same font as Fiji's existing standard input dialogs.
+                textArea.setFont(new JTextField().getFont());
+                installTextUndo(textArea);
+                textArea.setLineWrap(false);
+                textArea.setWrapStyleWord(false);
+                textArea.setFocusTraversalKeysEnabled(true);
+                textArea.setFocusTraversalKeys(KeyboardFocusManager.FORWARD_TRAVERSAL_KEYS,
+                        Collections.singleton(KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0)));
+                textArea.setFocusTraversalKeys(KeyboardFocusManager.BACKWARD_TRAVERSAL_KEYS,
+                        Collections.singleton(KeyStroke.getKeyStroke(
+                                KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK)));
+                textAreas.add(textArea);
+                if (initialTexts.size() > 1) entries.add(new JLabel((i + 1) + "."));
+                entries.add(new JScrollPane(textArea));
+                if (i < initialTexts.size() - 1) entries.add(Box.createVerticalStrut(6));
+            }
+            final JTextArea firstTextArea = textAreas.get(0);
 
             JPanel textPanel = new JPanel(new BorderLayout(0, 4));
             textPanel.add(new JLabel(textLabel), BorderLayout.NORTH);
-            textPanel.add(new JScrollPane(textArea), BorderLayout.CENTER);
+            if (initialTexts.size() == 1) {
+                textPanel.add(entries, BorderLayout.CENTER);
+            } else {
+                JScrollPane scroll = new JScrollPane(entries);
+                scroll.setPreferredSize(new Dimension(420, Math.min(360, entries.getPreferredSize().height + 8)));
+                scroll.getVerticalScrollBar().setUnitIncrement(16);
+                textPanel.add(scroll, BorderLayout.CENTER);
+            }
             if (multiline) {
                 textPanel.add(new JLabel(
                         "Shift+Enter: new line     Enter: OK     Esc: cancel"),
@@ -1239,36 +1353,38 @@ public class Gelato implements Command {
                 @Override
                 public void selectInitialValue() {
                     // Choose the input in Swing's own initial-focus hook.
-                    textArea.requestFocus();
-                    textArea.selectAll();
+                    firstTextArea.requestFocus();
+                    firstTextArea.selectAll();
                 }
             };
             final JDialog dialog = pane.createDialog(frame, title);
             dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
-            textArea.getInputMap(JComponent.WHEN_FOCUSED).put(
-                    KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "accept-text");
-            textArea.getActionMap().put("accept-text", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent event) {
-                    pane.setValue(Integer.valueOf(JOptionPane.OK_OPTION));
-                    dialog.dispose();
-                }
-            });
-            if (multiline) {
+            for (final JTextArea textArea : textAreas) {
                 textArea.getInputMap(JComponent.WHEN_FOCUSED).put(
-                        KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,
-                                InputEvent.SHIFT_DOWN_MASK), "insert-text-line");
-                textArea.getActionMap().put("insert-text-line", new AbstractAction() {
+                        KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "accept-text");
+                textArea.getActionMap().put("accept-text", new AbstractAction() {
                     @Override
                     public void actionPerformed(ActionEvent event) {
-                        textArea.replaceSelection("\n");
+                        pane.setValue(Integer.valueOf(JOptionPane.OK_OPTION));
+                        dialog.dispose();
                     }
                 });
-            } else {
-                textArea.getInputMap(JComponent.WHEN_FOCUSED).put(
-                        KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,
-                                InputEvent.SHIFT_DOWN_MASK), "accept-text");
+                if (multiline) {
+                    textArea.getInputMap(JComponent.WHEN_FOCUSED).put(
+                            KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,
+                                    InputEvent.SHIFT_DOWN_MASK), "insert-text-line");
+                    textArea.getActionMap().put("insert-text-line", new AbstractAction() {
+                        @Override
+                        public void actionPerformed(ActionEvent event) {
+                            textArea.replaceSelection("\n");
+                        }
+                    });
+                } else {
+                    textArea.getInputMap(JComponent.WHEN_FOCUSED).put(
+                            KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,
+                                    InputEvent.SHIFT_DOWN_MASK), "accept-text");
+                }
             }
             dialog.getRootPane().registerKeyboardAction(new ActionListener() {
                 @Override
@@ -1282,9 +1398,12 @@ public class Gelato implements Command {
             dialog.setVisible(true);
             Object value = pane.getValue();
             dialog.dispose();
-            return value instanceof Integer
-                    && ((Integer) value).intValue() == JOptionPane.OK_OPTION
-                            ? textArea.getText() : null;
+            if (!(value instanceof Integer) || ((Integer) value).intValue() != JOptionPane.OK_OPTION) {
+                return null;
+            }
+            List<String> result = new ArrayList<String>();
+            for (JTextArea textArea : textAreas) result.add(textArea.getText());
+            return result;
         }
 
         private static String normalizeAnnotationText(String text) {
@@ -5466,6 +5585,38 @@ public class Gelato implements Command {
                         textLines[i], drawXs[i], baselineYs[i], transform));
             }
             this.lines = Collections.unmodifiableList(lineLayouts);
+        }
+    }
+
+    /** Null is an explicit 'Mixed / leave unchanged' value in shared controls. */
+    private static final class OptionalNumberModel extends SpinnerNumberModel {
+        private boolean mixed;
+        OptionalNumberModel(Number value, Number fallback, Comparable minimum,
+                Comparable maximum, Number step) {
+            super(value == null ? fallback : value, minimum, maximum, step);
+            mixed = value == null;
+        }
+        @Override
+        public Object getValue() { return mixed ? null : super.getValue(); }
+        @Override
+        public void setValue(Object value) {
+            boolean wasMixed = mixed;
+            mixed = value == null;
+            if (value != null) super.setValue(value);
+            if (wasMixed != mixed) fireStateChanged();
+        }
+        @Override
+        public Object getNextValue() { return mixed ? super.getValue() : super.getNextValue(); }
+        @Override
+        public Object getPreviousValue() { return mixed ? super.getValue() : super.getPreviousValue(); }
+    }
+
+    private static final class AngleTextDialogResult {
+        final List<String> texts;
+        final Double angleDeg;
+        final Float fontSize;
+        AngleTextDialogResult(List<String> texts, Double angleDeg, Float fontSize) {
+            this.texts = texts; this.angleDeg = angleDeg; this.fontSize = fontSize;
         }
     }
 
