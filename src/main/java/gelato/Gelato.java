@@ -111,7 +111,7 @@ import org.scijava.plugin.Plugin;
 
 @Plugin(
         type = Command.class,
-        menuPath = "Plugins>Gelato>Gelato 1.1.4")
+        menuPath = "Plugins>Gelato>Gelato 1.1.5")
 public class Gelato implements Command {
     @Override
     public void run() {
@@ -134,7 +134,7 @@ public class Gelato implements Command {
         private static final float A4_PAGE_HEIGHT_PT = 841.8898f;
         private static final int TOOL_BUTTON_W = 220;
         private static final int TOOL_BUTTON_H = 30;
-        private static final String VERSION = "1.1.4";
+        private static final String VERSION = "1.1.5";
         private static final int LOG_FORMAT_VERSION = 2;
         private static final double CROP_GEOMETRY_AGREEMENT_TOLERANCE = 1.0;
         private static final double MARKER_COORDINATE_AGREEMENT_TOLERANCE = 1.0;
@@ -220,12 +220,14 @@ public class Gelato implements Command {
                 new ArrayList<AnnotatedCropSourceImage>();
         private final Set<String> shownMappingWarnings = new HashSet<String>();
         private final String windowTitle;
+        private final ProjectSession project = new ProjectSession(this);
         private String figureName = "";
         private File coordinateLogFile;
         private boolean reconstructedFromLog;
         private boolean firstReconstructionSave;
         private String reconstructionReportText;
         private boolean reconstructionReportHasWarnings;
+        private boolean reconstructionReportKeepOnTop = true;
         private JFrame reconstructionReportFrame;
         private JButton reconstructionDetailsButton;
         private final Map<ImagePlus, String[]> reconstructionImageRoles =
@@ -375,11 +377,16 @@ public class Gelato implements Command {
 
         private void buildUi() {
             frame = new JFrame(windowTitle);
-            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
             installFigureHistoryBindings(frame.getRootPane(), JComponent.WHEN_IN_FOCUSED_WINDOW);
             frame.addWindowListener(new WindowAdapter() {
                 @Override
+                public void windowClosing(WindowEvent event) {
+                    if (project.confirmClose()) frame.dispose();
+                }
+                @Override
                 public void windowClosed(WindowEvent event) {
+                    project.dispose();
                     if (kdaCanvas != null) {
                         deactivateKdaMode();
                     }
@@ -545,6 +552,7 @@ public class Gelato implements Command {
             syncAnnotationModeButtons();
             updateCropSizeButtons();
             updateAnnotationFontReadout();
+            project.install();
             SwingUtilities.invokeLater(new Runnable() {
                 @Override
                 public void run() {
@@ -554,13 +562,36 @@ public class Gelato implements Command {
         }
 
         private JPanel createFigureControls() {
-            JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+            JPanel controls = new JPanel(new BorderLayout(24, 2));
+            JPanel projectButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+            String[] labels = {"Open Project...", "Save Project", "Save Project As..."};
+            String[] commands = {"open_project", "save_project", "save_project_as"};
+            for (int i = 0; i < labels.length; i++) {
+                JButton button = new JButton(labels[i]);
+                button.setActionCommand(commands[i]);
+                button.addActionListener(this);
+                projectButtons.add(button);
+            }
+            controls.add(projectButtons, BorderLayout.CENTER);
             swapTickSidesCheckBox = new JCheckBox("Swap tick sides", tickSidesSwapped);
             swapTickSidesCheckBox.setToolTipText(
                     "All crops: kDa ticks and values on the right, band ticks and labels on the left.");
             swapTickSidesCheckBox.setActionCommand("swap_tick_sides");
             swapTickSidesCheckBox.addActionListener(this);
-            controls.add(swapTickSidesCheckBox);
+            controls.add(swapTickSidesCheckBox, BorderLayout.EAST);
+            controls.addComponentListener(new ComponentAdapter() {
+                private boolean stacked;
+                @Override
+                public void componentResized(ComponentEvent event) {
+                    boolean narrow = controls.getWidth() < projectButtons.getPreferredSize().width
+                            + swapTickSidesCheckBox.getPreferredSize().width + 24;
+                    if (narrow == stacked) return;
+                    stacked = narrow;
+                    controls.remove(swapTickSidesCheckBox);
+                    controls.add(swapTickSidesCheckBox, narrow ? BorderLayout.SOUTH : BorderLayout.EAST);
+                    controls.revalidate();
+                }
+            });
             return controls;
         }
 
@@ -711,6 +742,9 @@ public class Gelato implements Command {
         @Override
         public void actionPerformed(ActionEvent event) {
             String command = event.getActionCommand();
+            if ("open_project".equals(command)) { project.open(); return; }
+            if ("save_project".equals(command)) { project.save(false); return; }
+            if ("save_project_as".equals(command)) { project.save(true); return; }
             if ("open_image".equals(command)) {
                 openImage();
             } else if ("open_marker_image".equals(command)) {
@@ -1316,8 +1350,20 @@ public class Gelato implements Command {
                         Collections.singleton(KeyStroke.getKeyStroke(
                                 KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK)));
                 textAreas.add(textArea);
-                if (initialTexts.size() > 1) entries.add(new JLabel((i + 1) + "."));
-                entries.add(new JScrollPane(textArea));
+                if (initialTexts.size() > 1) {
+                    JPanel row = new JPanel(new BorderLayout(8, 0));
+                    JLabel number = new JLabel((i + 1) + ".", JLabel.RIGHT);
+                    number.setVerticalAlignment(JLabel.TOP);
+                    number.setBorder(BorderFactory.createEmptyBorder(3, 0, 0, 0));
+                    // Reserve the same number-column width for every row.
+                    number.setPreferredSize(new Dimension(number.getFontMetrics(number.getFont())
+                            .stringWidth(initialTexts.size() + "."), number.getPreferredSize().height));
+                    row.add(number, BorderLayout.WEST);
+                    row.add(new JScrollPane(textArea), BorderLayout.CENTER);
+                    entries.add(row);
+                } else {
+                    entries.add(new JScrollPane(textArea));
+                }
                 if (i < initialTexts.size() - 1) entries.add(Box.createVerticalStrut(6));
             }
             final JTextArea firstTextArea = textAreas.get(0);
@@ -2545,8 +2591,7 @@ public class Gelato implements Command {
 
         private void setFigureName(String name) {
             figureName = name;
-            if (frame != null) frame.setTitle(TITLE + " - " + figureName
-                    + (reconstructedFromLog ? " - Reconstructed from coordinate log" : ""));
+            project.updateTitle();
             if (reconstructionReportFrame != null) {
                 reconstructionReportFrame.setTitle(reconstructionReportTitle());
             }
@@ -3722,9 +3767,9 @@ public class Gelato implements Command {
             content.add(reportPane, BorderLayout.CENTER);
 
             JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            final JCheckBox keepOnTop = new JCheckBox("Keep on top", true);
+            final JCheckBox keepOnTop = new JCheckBox("Keep on top", reconstructionReportKeepOnTop);
             if (reportFrame.isAlwaysOnTopSupported()) {
-                reportFrame.setAlwaysOnTop(true);
+                reportFrame.setAlwaysOnTop(reconstructionReportKeepOnTop);
             } else {
                 keepOnTop.setSelected(false);
                 keepOnTop.setEnabled(false);
@@ -3732,6 +3777,7 @@ public class Gelato implements Command {
             keepOnTop.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent event) {
+                    reconstructionReportKeepOnTop = keepOnTop.isSelected();
                     reportFrame.setAlwaysOnTop(keepOnTop.isSelected());
                 }
             });
@@ -5212,6 +5258,672 @@ public class Gelato implements Command {
             selectedBand = band;
             updateCropSizeButtons();
             figureCanvas.repaint();
+        }
+    }
+
+    /** Versioned values and lossless assets; no Java object serialization or external file dependencies. */
+    private static final class ProjectState {
+        static final int FORMAT_VERSION = 1;
+        final java.util.Properties data = new java.util.Properties();
+        final Map<String, byte[]> assets = new LinkedHashMap<String, byte[]>();
+
+        void put(String key, Object value) { if (value != null) data.setProperty(key, value.toString()); }
+        String text(String key) { return data.getProperty(key, ""); }
+        String required(String key) throws java.io.IOException {
+            String value = data.getProperty(key);
+            if (value == null) throw new java.io.IOException("Missing project field: " + key);
+            return value;
+        }
+        int integer(String key) throws java.io.IOException {
+            try { return Integer.parseInt(required(key)); }
+            catch (NumberFormatException ex) { throw new java.io.IOException("Invalid integer: " + key, ex); }
+        }
+        int count(String key) throws java.io.IOException {
+            int value = integer(key);
+            if (value < 0 || value > 100000) throw new java.io.IOException("Invalid count: " + key);
+            return value;
+        }
+        int positive(String key) throws java.io.IOException {
+            int value = integer(key);
+            if (value <= 0) throw new java.io.IOException("Invalid size: " + key);
+            return value;
+        }
+        double number(String key) throws java.io.IOException {
+            try {
+                double value = Double.parseDouble(required(key));
+                if (Double.isNaN(value) || Double.isInfinite(value)) throw new NumberFormatException();
+                return value;
+            } catch (NumberFormatException ex) { throw new java.io.IOException("Invalid number: " + key, ex); }
+        }
+        boolean bool(String key) {
+            String value = data.getProperty(key);
+            if (!"true".equals(value) && !"false".equals(value)) {
+                throw new IllegalArgumentException("Invalid boolean: " + key);
+            }
+            return Boolean.parseBoolean(value);
+        }
+        void numbers(String key, double... values) {
+            for (int i = 0; i < values.length; i++) put(key + "." + i, values[i]);
+        }
+        double[] numbers(String key, int count) throws java.io.IOException {
+            double[] values = new double[count];
+            for (int i = 0; i < count; i++) values[i] = number(key + "." + i);
+            return values;
+        }
+        <T> T reference(List<T> values, int index, boolean optional) throws java.io.IOException {
+            if (optional && index == -1) return null;
+            if (index < 0 || index >= values.size()) throw new java.io.IOException("Invalid project object reference.");
+            return values.get(index);
+        }
+        byte[] asset(String path) throws java.io.IOException {
+            byte[] bytes = assets.get(path);
+            if (bytes == null) throw new java.io.IOException("Missing project asset: " + path);
+            return bytes;
+        }
+
+        static ProjectState capture(Controller c) throws java.io.IOException {
+            ProjectState p = new ProjectState();
+            FigureState figure = new FigureState(c);
+            p.put("format", "Gelato Project"); p.put("format.version", FORMAT_VERSION);
+            p.put("plugin.version", Controller.VERSION); p.put("figure.name", c.figureName);
+            p.put("figure.swapped", figure.swapped); p.numbers("figure.defaults", figure.defaults);
+            p.put("figure.mode", c.annotationMode.name());
+            p.put("figure.selected", c.bands.indexOf(figure.selectedBand));
+            p.put("figure.fit", c.figureFitMode);
+            p.put("figure.zoom", c.figureCanvas == null ? 1.0 : c.figureCanvas.viewZoom());
+            Point scroll = c.figureScrollPane == null ? new Point() : c.figureScrollPane.getViewport().getViewPosition();
+            p.numbers("figure.scroll", scroll.x, scroll.y);
+            p.put("workflow.labels", c.showSourceKdaLabels);
+            p.put("workflow.type", c.markingSourceType == null ? "" : c.markingSourceType.name());
+            p.put("workflow.fresh", c.startFreshMarkerSetOnNextMark);
+            p.put("workflow.nextSet", c.nextMarkerSetNumber);
+            p.put("workflow.cropWasMarking", c.cropWasMarking);
+            p.put("reconstruction.origin", c.reconstructedFromLog);
+            p.put("reconstruction.report", c.reconstructionReportText);
+            p.put("reconstruction.warnings", c.reconstructionReportHasWarnings);
+            p.put("reconstruction.keepOnTop", c.reconstructionReportKeepOnTop);
+            p.put("source.gel.path", c.gelPath); p.put("source.marker.path", c.markerPath);
+            List<KdaMarkerSet> sets = new ArrayList<KdaMarkerSet>(c.markerSets);
+            if (c.activeMarkerSet != null && !sets.contains(c.activeMarkerSet)) sets.add(c.activeMarkerSet);
+            for (BandCrop band : c.bands) if (band.markerSet != null && !sets.contains(band.markerSet)) sets.add(band.markerSet);
+            p.put("set.count", sets.size()); p.put("workflow.activeSet", sets.indexOf(c.activeMarkerSet));
+            for (int i = 0; i < sets.size(); i++) {
+                KdaMarkerSet set = sets.get(i); String key = "set." + i;
+                p.put(key + ".id", set.id); p.put(key + ".type", set.sourceType.name());
+                p.put(key + ".path", set.sourcePath); p.put(key + ".width", set.sourceWidth);
+                p.put(key + ".height", set.sourceHeight); p.put(key + ".frozen", set.frozen);
+                p.put(key + ".count", set.markers.size());
+                for (int j = 0; j < set.markers.size(); j++) {
+                    KdaMarker marker = set.markers.get(j);
+                    p.put(key + ".marker." + j + ".label", marker.label);
+                    p.numbers(key + ".marker." + j, marker.xAbs, marker.yAbs);
+                }
+            }
+            Map<FigureAnnotation, String> annotationIds = new java.util.IdentityHashMap<FigureAnnotation, String>();
+            p.put("band.count", figure.bands.size());
+            for (int i = 0; i < figure.bands.size(); i++) {
+                BandState state = figure.bands.get(i); BandCrop band = state.band; String key = "band." + i;
+                java.io.ByteArrayOutputStream pixels = new java.io.ByteArrayOutputStream();
+                if (!ImageIO.write(band.image, "png", pixels)) throw new java.io.IOException("PNG encoder unavailable.");
+                p.assets.put("assets/crop-" + i + ".png", pixels.toByteArray());
+                p.put(key + ".label", band.label); p.put(key + ".path", band.sourcePath);
+                p.put(key + ".sourceWidth", band.sourceWidth); p.put(key + ".sourceHeight", band.sourceHeight);
+                p.put(key + ".set", sets.indexOf(band.markerSet)); p.put(key + ".displayWidth", state.width);
+                p.numbers(key + ".position", state.x, state.y);
+                p.numbers(key + ".crop", band.cropX, band.cropY, band.cropWidth, band.cropHeight, band.cropAngleDeg);
+                MarkerMapping m = band.markerMapping;
+                p.put(key + ".mapping", m != null);
+                if (m != null) {
+                    p.numbers(key + ".mapping", m.markerWidth, m.markerHeight, m.gelWidth, m.gelHeight, m.scaleX, m.scaleY);
+                    p.put(key + ".mapping.differ", m.dimensionsDiffer); p.put(key + ".mapping.ratio", m.aspectRatioMismatch);
+                }
+                p.put(key + ".marker.count", band.markers.size());
+                for (int j = 0; j < band.markers.size(); j++) {
+                    CropMarker marker = band.markers.get(j); String mk = key + ".marker." + j;
+                    p.put(mk + ".label", marker.label);
+                    p.numbers(mk, marker.yInCrop, marker.sourceXAbs, marker.sourceYAbs, marker.gelXAbs, marker.gelYAbs);
+                }
+                p.put(key + ".text.count", state.texts.size());
+                for (int j = 0; j < state.texts.size(); j++) {
+                    String tk = key + ".text." + j;
+                    p.saveText(tk, state.texts.get(j), band.markers);
+                    annotationIds.put(state.texts.get(j).text, tk);
+                }
+            }
+            p.put("free.count", figure.freeTexts.size());
+            for (int i = 0; i < figure.freeTexts.size(); i++) {
+                String key = "free." + i; p.saveText(key, figure.freeTexts.get(i), Collections.<CropMarker>emptyList());
+                annotationIds.put(figure.freeTexts.get(i).text, key);
+            }
+            p.put("line.count", figure.lines.size());
+            for (int i = 0; i < figure.lines.size(); i++) {
+                LineState state = figure.lines.get(i); String key = "line." + i;
+                p.put(key + ".orientation", state.line.orientation.name());
+                p.numbers(key, state.x1, state.y1, state.x2, state.y2);
+                annotationIds.put(state.line, key);
+            }
+            int selection = 0;
+            for (FigureAnnotation annotation : figure.selection) {
+                String id = annotationIds.get(annotation);
+                if (id != null) p.put("selection." + selection++, id);
+            }
+            p.put("selection.count", selection);
+            p.saveSource("gel", c.gelImp); p.saveSource("marker", c.markerImp);
+            p.put("source.shared", c.gelImp != null && c.gelImp == c.markerImp);
+            p.put("workflow.marking", c.kdaModeActive && (c.markingSourceType == MarkerSourceType.MARKER_IMAGE
+                    ? p.bool("source.marker.present") : p.bool("source.gel.present")));
+            p.put("workflow.crop", c.waitingForCrop && p.bool("source.gel.present"));
+            ImagePlus current = WindowManager.getCurrentImage();
+            p.put("source.focus", current == c.markerImp && current != null ? "marker" : "gel");
+            return p;
+        }
+
+        void saveText(String key, TextState state, List<CropMarker> markers) {
+            put(key + ".kind", state.text.kind.name()); put(key + ".text", state.content);
+            put(key + ".marker", markers.indexOf(state.text.marker)); numbers(key, state.values);
+        }
+
+        void saveSource(String role, ImagePlus image) throws java.io.IOException {
+            String key = "source." + role;
+            boolean present = image != null && image.getProcessor() != null
+                    && (java.awt.GraphicsEnvironment.isHeadless() || image.getWindow() != null);
+            put(key + ".present", present);
+            if (!present) return;
+            byte[] pixels = new ij.io.FileSaver(image).serialize();
+            if (pixels == null) throw new java.io.IOException("Could not encode the current " + role + " image.");
+            assets.put("assets/" + role + ".tif", pixels);
+            put(key + ".title", image.getTitle()); put(key + ".slice", image.getCurrentSlice());
+            if (image.getType() != ImagePlus.COLOR_RGB) {
+                numbers(key + ".display", image.getDisplayRangeMin(), image.getDisplayRangeMax());
+            }
+            put(key + ".window", image.getWindow() != null);
+            if (image.getWindow() != null) {
+                Rectangle bounds = image.getWindow().getBounds();
+                numbers(key + ".window", bounds.x, bounds.y, bounds.width, bounds.height);
+            }
+            Roi roi = image.getRoi();
+            if (roi != null) {
+                byte[] encoded = ij.io.RoiEncoder.saveAsByteArray(roi);
+                if (encoded == null) throw new java.io.IOException("Could not encode the " + role + " selection.");
+                assets.put("assets/" + role + ".roi", encoded);
+            }
+            put(key + ".roi", roi != null);
+            ImageCanvas canvas = image.getCanvas();
+            put(key + ".view", canvas != null);
+            if (canvas != null) {
+                Rectangle r = canvas.getSrcRect();
+                numbers(key + ".view", r.x, r.y, r.width, r.height, canvas.getMagnification());
+            }
+        }
+
+        Controller restore() throws java.io.IOException {
+            try { return restoreChecked(); }
+            catch (IllegalArgumentException ex) { throw new java.io.IOException("Invalid project values: " + ex.getMessage(), ex); }
+        }
+
+        Controller restoreChecked() throws java.io.IOException {
+            if (!"Gelato Project".equals(required("format")) || integer("format.version") != FORMAT_VERSION) {
+                throw new java.io.IOException("Unsupported Gelato project format.");
+            }
+            Controller c = new Controller();
+            c.figureName = required("figure.name");
+            if (!Controller.validFigureName(c.figureName)) throw new java.io.IOException("Invalid project figure name.");
+            c.tickSidesSwapped = bool("figure.swapped");
+            double[] defaults = numbers("figure.defaults", 7);
+            for (int i = 2; i < defaults.length; i++) if (defaults[i] <= 0) throw new java.io.IOException("Invalid default font size.");
+            c.defaultSampleAngleDeg = defaults[0]; c.defaultFreeTextAngleDeg = defaults[1];
+            c.defaultKdaFontSize = (float)defaults[2]; c.defaultBandNameFontSize = (float)defaults[3];
+            c.defaultSampleFontSize = (float)defaults[4]; c.defaultBandTickFontSize = (float)defaults[5];
+            c.defaultFreeTextFontSize = (float)defaults[6];
+            c.annotationMode = AnnotationMode.valueOf(required("figure.mode"));
+            c.showSourceKdaLabels = bool("workflow.labels");
+            c.markingSourceType = text("workflow.type").isEmpty() ? null : MarkerSourceType.valueOf(text("workflow.type"));
+            c.startFreshMarkerSetOnNextMark = bool("workflow.fresh");
+            c.nextMarkerSetNumber = positive("workflow.nextSet");
+            c.waitingForCrop = bool("workflow.crop"); c.cropWasMarking = bool("workflow.cropWasMarking");
+            c.reconstructedFromLog = bool("reconstruction.origin");
+            c.firstReconstructionSave = c.reconstructedFromLog;
+            c.reconstructionReportText = data.getProperty("reconstruction.report");
+            c.reconstructionReportHasWarnings = bool("reconstruction.warnings");
+            c.reconstructionReportKeepOnTop = bool("reconstruction.keepOnTop");
+            c.gelPath = data.getProperty("source.gel.path"); c.markerPath = data.getProperty("source.marker.path");
+            Set<String> setIds = new HashSet<String>();
+            for (int i = 0, size = count("set.count"); i < size; i++) {
+                String key = "set." + i; String id = required(key + ".id");
+                if (!setIds.add(id)) throw new java.io.IOException("Duplicate marker set ID.");
+                KdaMarkerSet set = new KdaMarkerSet(id, MarkerSourceType.valueOf(required(key + ".type")),
+                        required(key + ".path"), positive(key + ".width"), positive(key + ".height"));
+                set.frozen = bool(key + ".frozen");
+                for (int j = 0, n = count(key + ".count"); j < n; j++) {
+                    String mk = key + ".marker." + j; double[] xy = numbers(mk, 2);
+                    set.markers.add(new KdaMarker(xy[0], xy[1], required(mk + ".label")));
+                }
+                c.markerSets.add(set);
+            }
+            c.activeMarkerSet = reference(c.markerSets, integer("workflow.activeSet"), true);
+            Map<String, FigureAnnotation> annotationIds = new LinkedHashMap<String, FigureAnnotation>();
+            for (int i = 0, size = count("band.count"); i < size; i++) {
+                String key = "band." + i;
+                BufferedImage pixels = ImageIO.read(new java.io.ByteArrayInputStream(asset("assets/crop-" + i + ".png")));
+                if (pixels == null) throw new java.io.IOException("Invalid crop image.");
+                List<CropMarker> markers = new ArrayList<CropMarker>();
+                for (int j = 0, n = count(key + ".marker.count"); j < n; j++) {
+                    String mk = key + ".marker." + j; double[] m = numbers(mk, 5);
+                    markers.add(new CropMarker(required(mk + ".label"), m[0], m[1], m[2], m[3], m[4]));
+                }
+                MarkerMapping mapping = null;
+                if (bool(key + ".mapping")) {
+                    double[] m = numbers(key + ".mapping", 6);
+                    for (double value : m) if (value <= 0) throw new java.io.IOException("Invalid marker mapping.");
+                    mapping = new MarkerMapping((int)m[0], (int)m[1], (int)m[2], (int)m[3], m[4], m[5],
+                            bool(key + ".mapping.differ"), bool(key + ".mapping.ratio"));
+                }
+                BandCrop band = new BandCrop(pixels, markers, required(key + ".label"), positive(key + ".displayWidth"),
+                        required(key + ".path"), positive(key + ".sourceWidth"), positive(key + ".sourceHeight"),
+                        reference(c.markerSets, integer(key + ".set"), true), mapping);
+                double[] xy = numbers(key + ".position", 2), geometry = numbers(key + ".crop", 5);
+                band.xOffset = xy[0]; band.yOffset = xy[1]; band.cropX = geometry[0]; band.cropY = geometry[1];
+                if (geometry[2] < 1 || geometry[3] < 1) throw new java.io.IOException("Invalid crop geometry.");
+                band.cropWidth = (int)geometry[2]; band.cropHeight = (int)geometry[3]; band.cropAngleDeg = geometry[4];
+                // Constructors create defaults; replace them with the exact saved annotations (including deletions).
+                band.textAnnotations.clear();
+                for (int j = 0, n = count(key + ".text.count"); j < n; j++) {
+                    String tk = key + ".text." + j; TextAnnotation text = restoreText(tk, band);
+                    band.textAnnotations.add(text); annotationIds.put(tk, text);
+                }
+                c.bands.add(band);
+            }
+            for (int i = 0, n = count("free.count"); i < n; i++) {
+                String key = "free." + i; TextAnnotation text = restoreText(key, null);
+                c.freeTextAnnotations.add(text); annotationIds.put(key, text);
+            }
+            for (int i = 0, n = count("line.count"); i < n; i++) {
+                String key = "line." + i; double[] v = numbers(key, 4);
+                LineAnnotation line = new LineAnnotation(LineOrientation.valueOf(required(key + ".orientation")), v[0], v[1], v[2], v[3]);
+                c.lineAnnotations.add(line); annotationIds.put(key, line);
+            }
+            c.selectedBand = reference(c.bands, integer("figure.selected"), true);
+            // Validate selection references now; apply only after the canvas exists.
+            for (int i = 0, n = count("selection.count"); i < n; i++) {
+                if (!annotationIds.containsKey(required("selection." + i))) throw new java.io.IOException("Invalid annotation selection.");
+            }
+            c.gelImp = restoreSource("gel"); c.markerImp = bool("source.shared") ? c.gelImp : restoreSource("marker");
+            if (bool("workflow.marking") && (c.activeMarkerSet == null || c.markingSourceImage() == null)) {
+                throw new java.io.IOException("Missing active calibration or marking image.");
+            }
+            if (c.waitingForCrop && c.gelImp == null) throw new java.io.IOException("Missing active crop image.");
+            if (number("figure.zoom") <= 0) throw new java.io.IOException("Invalid figure zoom.");
+            bool("figure.fit");
+            numbers("figure.scroll", 2);
+            return c;
+        }
+
+        TextAnnotation restoreText(String key, BandCrop owner) throws java.io.IOException {
+            AnnotationKind kind = AnnotationKind.valueOf(required(key + ".kind"));
+            if ((owner == null) != (kind == AnnotationKind.FREE_TEXT)) throw new java.io.IOException("Invalid annotation owner.");
+            CropMarker marker = owner == null ? null : reference(owner.markers, integer(key + ".marker"), true);
+            if ((kind == AnnotationKind.MW_VALUE) != (marker != null)) throw new java.io.IOException("Invalid annotation marker.");
+            double[] v = numbers(key, 8);
+            if (v[0] <= 0 || v[0] > Float.MAX_VALUE) throw new java.io.IOException("Invalid font size.");
+            TextAnnotation text = new TextAnnotation(kind, owner, marker, required(key + ".text"), (float)v[0]);
+            text.angleDeg = v[1]; text.sampleXFraction = v[2]; text.bandYFraction = v[3];
+            text.anchorX = v[4]; text.anchorY = v[5]; text.offsetX = v[6]; text.offsetY = v[7];
+            return text;
+        }
+
+        ImagePlus restoreSource(String role) throws java.io.IOException {
+            String key = "source." + role;
+            if (!bool(key + ".present")) return null;
+            ImagePlus image = new ij.io.Opener().deserialize(asset("assets/" + role + ".tif"));
+            if (image == null) throw new java.io.IOException("Invalid embedded " + role + " image.");
+            image.setTitle(required(key + ".title"));
+            int slice = positive(key + ".slice");
+            if (slice > image.getStackSize()) throw new java.io.IOException("Invalid image slice.");
+            image.setSlice(slice);
+            image.setFileInfo(null); // The embedded working copy is not an external file to overwrite.
+            if (image.getType() != ImagePlus.COLOR_RGB) {
+                double[] range = numbers(key + ".display", 2);
+                if (range[1] < range[0]) throw new java.io.IOException("Invalid image display range.");
+                image.setDisplayRange(range[0], range[1]);
+            }
+            if (bool(key + ".roi")) {
+                Roi roi = ij.io.RoiDecoder.openFromByteArray(asset("assets/" + role + ".roi"));
+                if (roi == null) throw new java.io.IOException("Invalid embedded selection.");
+                image.setRoi(roi);
+            } else image.killRoi();
+            if (bool(key + ".view")) {
+                double[] view = numbers(key + ".view", 5);
+                if (view[2] <= 0 || view[3] <= 0 || view[4] <= 0) throw new java.io.IOException("Invalid source-image view.");
+            }
+            if (bool(key + ".window")) {
+                double[] bounds = numbers(key + ".window", 4);
+                if (bounds[2] < 1 || bounds[3] < 1) throw new java.io.IOException("Invalid image window bounds.");
+            }
+            return image;
+        }
+
+        void restoreViews(Controller c) {
+            try {
+                c.figureFitMode = bool("figure.fit");
+                if (c.figureFitMode) c.fitFigureToViewport();
+                else c.applyFigureZoom((int)Math.round(number("figure.zoom") * 100), null);
+                double[] scroll = numbers("figure.scroll", 2);
+                c.figureScrollPane.getViewport().setViewPosition(new Point((int)scroll[0], (int)scroll[1]));
+                Map<String, FigureAnnotation> ids = new LinkedHashMap<String, FigureAnnotation>();
+                for (int i = 0; i < c.bands.size(); i++) {
+                    List<TextAnnotation> texts = c.bands.get(i).textAnnotations;
+                    for (int j = 0; j < texts.size(); j++) ids.put("band." + i + ".text." + j, texts.get(j));
+                }
+                for (int i = 0; i < c.freeTextAnnotations.size(); i++) ids.put("free." + i, c.freeTextAnnotations.get(i));
+                for (int i = 0; i < c.lineAnnotations.size(); i++) ids.put("line." + i, c.lineAnnotations.get(i));
+                List<FigureAnnotation> selection = new ArrayList<FigureAnnotation>();
+                for (int i = 0, n = count("selection.count"); i < n; i++) selection.add(ids.get(required("selection." + i)));
+                c.figureCanvas.replaceAnnotationSelection(selection);
+                restoreSourceView("marker", c.markerImp); restoreSourceView("gel", c.gelImp);
+                ImagePlus focus = "marker".equals(text("source.focus")) ? c.markerImp : c.gelImp;
+                if (focus != null && focus.getWindow() != null) {
+                    WindowManager.setCurrentWindow(focus.getWindow());
+                    focus.getWindow().toFront();
+                }
+                c.updateCropSizeButtons(); c.updateAnnotationFontReadout(); c.figureCanvas.repaint();
+            } catch (java.io.IOException ex) { throw new IllegalStateException("Invalid saved view.", ex); }
+        }
+
+        void restoreSourceView(String role, ImagePlus image) throws java.io.IOException {
+            if (image == null || image.getCanvas() == null || !bool("source." + role + ".view")) return;
+            if (bool("source." + role + ".window")) {
+                double[] bounds = numbers("source." + role + ".window", 4);
+                Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+                int width = Math.min(screen.width, (int)bounds[2]), height = Math.min(screen.height, (int)bounds[3]);
+                image.getWindow().setBounds(Math.max(0, Math.min((int)bounds[0], screen.width - width)),
+                        Math.max(0, Math.min((int)bounds[1], screen.height - height)), width, height);
+                image.getWindow().validate();
+            }
+            double[] v = numbers("source." + role + ".view", 5);
+            ImageCanvas canvas = image.getCanvas();
+            canvas.setMagnification(v[4]);
+            canvas.setSourceRect(new Rectangle((int)v[0], (int)v[1], (int)v[2], (int)v[3]));
+            canvas.repaint();
+        }
+
+        void write(File target) throws java.io.IOException {
+            int index = 0;
+            for (Map.Entry<String, byte[]> entry : assets.entrySet()) {
+                put("asset." + index + ".path", entry.getKey());
+                put("asset." + index++ + ".sha256", digest(entry.getValue()));
+            }
+            put("asset.count", index);
+            java.nio.file.Path destination = target.toPath().toAbsolutePath();
+            java.nio.file.Path temporary = Files.createTempFile(destination.getParent(), ".gelato-project-", ".tmp");
+            try {
+                try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(Files.newOutputStream(temporary))) {
+                    zip.putNextEntry(new java.util.zip.ZipEntry("project.xml"));
+                    java.io.ByteArrayOutputStream manifest = new java.io.ByteArrayOutputStream();
+                    data.storeToXML(manifest, "Gelato project format " + FORMAT_VERSION, "UTF-8");
+                    zip.write(manifest.toByteArray()); zip.closeEntry();
+                    for (Map.Entry<String, byte[]> entry : assets.entrySet()) {
+                        zip.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+                        zip.write(entry.getValue()); zip.closeEntry();
+                    }
+                }
+                try {
+                    Files.move(temporary, destination, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                    Files.move(temporary, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally { Files.deleteIfExists(temporary); }
+        }
+
+        static String digest(byte[] bytes) {
+            try {
+                return java.util.Base64.getEncoder().encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+            } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
+        }
+
+        static byte[] entry(java.util.zip.ZipFile zip, String path) throws java.io.IOException {
+            java.util.zip.ZipEntry entry = zip.getEntry(path);
+            if (entry == null || entry.isDirectory()) throw new java.io.IOException("Missing project entry: " + path);
+            try (java.io.InputStream input = zip.getInputStream(entry);
+                    java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {
+                byte[] buffer = new byte[65536]; int read;
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read); crc.update(buffer, 0, read);
+                }
+                if (entry.getCrc() != -1 && crc.getValue() != entry.getCrc()) {
+                    throw new java.io.IOException("Damaged project entry: " + path);
+                }
+                return output.toByteArray();
+            }
+        }
+
+        static ProjectState read(File file) throws java.io.IOException {
+            ProjectState p = new ProjectState();
+            try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(file)) {
+                p.data.loadFromXML(new java.io.ByteArrayInputStream(entry(zip, "project.xml")));
+                if (!"Gelato Project".equals(p.required("format")) || p.integer("format.version") != FORMAT_VERSION) {
+                    throw new java.io.IOException("Unsupported Gelato project format.");
+                }
+                for (int i = 0, n = p.count("asset.count"); i < n; i++) {
+                    String key = "asset." + i; String path = p.required(key + ".path");
+                    if (!path.matches("assets/[a-zA-Z0-9_-]+\\.(png|tif|roi)") || p.assets.containsKey(path)) {
+                        throw new java.io.IOException("Invalid project asset name.");
+                    }
+                    byte[] bytes = entry(zip, path);
+                    if (!digest(bytes).equals(p.required(key + ".sha256"))) throw new java.io.IOException("Damaged project asset: " + path);
+                    p.assets.put(path, bytes);
+                }
+            }
+            return p;
+        }
+    }
+
+    /** Project actions are separate from coordinate-log export and undo history. */
+    private static final class ProjectSession {
+        final Controller c;
+        File file;
+        List<Object> savedSignature;
+        volatile long imageRevision;
+        javax.swing.Timer timer;
+        java.awt.KeyEventDispatcher shortcuts;
+        ij.ImageListener imageListener;
+        boolean busy;
+
+        ProjectSession(Controller controller) { c = controller; }
+
+        void install() {
+            final String[] actions = {"save_project", "save_project_as", "open_project"};
+            int[] keys = {KeyEvent.VK_S, KeyEvent.VK_S, KeyEvent.VK_O};
+            for (int i = 0; i < actions.length; i++) {
+                final String action = actions[i];
+                int modifiers = InputEvent.CTRL_DOWN_MASK | (i == 1 ? InputEvent.SHIFT_DOWN_MASK : 0);
+                c.frame.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                        .put(KeyStroke.getKeyStroke(keys[i], modifiers), action);
+                c.frame.getRootPane().getActionMap().put(action, new AbstractAction() {
+                    public void actionPerformed(ActionEvent e) { command(action); }
+                });
+            }
+            // Current source images also need project shortcuts, ahead of ImageJ's image-save shortcut.
+            shortcuts = new java.awt.KeyEventDispatcher() {
+                public boolean dispatchKeyEvent(KeyEvent e) {
+                    if (e.getID() != KeyEvent.KEY_PRESSED || !e.isControlDown() || e.isAltDown()) return false;
+                    java.awt.Window window = e.getComponent() instanceof java.awt.Window
+                            ? (java.awt.Window)e.getComponent() : (e.getComponent() == null ? null
+                                    : SwingUtilities.getWindowAncestor(e.getComponent()));
+                    if (window == null || !((c.gelImp != null && window == c.gelImp.getWindow())
+                            || (c.markerImp != null && window == c.markerImp.getWindow()))) return false;
+                    final String action = e.getKeyCode() == KeyEvent.VK_S
+                            ? (e.isShiftDown() ? "save_project_as" : "save_project")
+                            : (e.getKeyCode() == KeyEvent.VK_O && !e.isShiftDown() ? "open_project" : null);
+                    if (action == null) return false;
+                    e.consume();
+                    SwingUtilities.invokeLater(new Runnable() { public void run() { command(action); } });
+                    return true;
+                }
+            };
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(shortcuts);
+            imageListener = new ij.ImageListener() {
+                public void imageOpened(ImagePlus image) { }
+                public void imageClosed(ImagePlus image) { changed(image); }
+                public void imageUpdated(ImagePlus image) { changed(image); }
+                private void changed(ImagePlus image) {
+                    if (image == c.gelImp || image == c.markerImp) imageRevision++;
+                }
+            };
+            ImagePlus.addImageListener(imageListener);
+            savedSignature = signature();
+            timer = new javax.swing.Timer(800, new ActionListener() {
+                public void actionPerformed(ActionEvent e) { if (!busy) updateTitle(); }
+            });
+            timer.start();
+            updateTitle();
+        }
+
+        void command(String action) {
+            if (busy) return;
+            if ("open_project".equals(action)) open();
+            else save("save_project_as".equals(action));
+        }
+
+        List<Object> signature() {
+            List<Object> values = new ArrayList<Object>(new FigureState(c).signature);
+            values.addAll(Arrays.asList(c.figureName, c.buildCoordinateLog(), c.activeMarkerSet,
+                    c.markingSourceType, c.startFreshMarkerSetOnNextMark, c.nextMarkerSetNumber,
+                    c.kdaModeActive, c.waitingForCrop, c.cropWasMarking, c.showSourceKdaLabels,
+                    c.annotationMode, c.reconstructionReportText, imageRevision));
+            for (KdaMarkerSet set : c.markerSets) {
+                values.addAll(Arrays.asList(set.id, set.sourceType, set.sourcePath,
+                        set.sourceWidth, set.sourceHeight, set.frozen));
+                for (KdaMarker marker : set.markers) {
+                    values.addAll(Arrays.asList(marker.xAbs, marker.yAbs, marker.label));
+                }
+            }
+            for (ImagePlus image : new ImagePlus[]{c.gelImp, c.markerImp}) {
+                values.add(image);
+                if (image != null && image.getProcessor() != null) {
+                    values.addAll(Arrays.asList(image.getWidth(), image.getHeight(), image.getStackSize()));
+                    Roi roi = image.getRoi();
+                    byte[] encoded = roi == null ? null : ij.io.RoiEncoder.saveAsByteArray(roi);
+                    values.add(encoded == null ? null : java.util.Base64.getEncoder().encodeToString(encoded));
+                }
+            }
+            return values;
+        }
+
+        boolean dirty() { return savedSignature != null && !savedSignature.equals(signature()); }
+
+        void updateTitle() {
+            if (c.frame == null) return;
+            String title = Controller.TITLE + (c.figureName.isEmpty() ? "" : " - " + c.figureName);
+            if (file != null) title += " - " + file.getName();
+            if (c.reconstructedFromLog) title += " - Reconstructed from coordinate log";
+            if (dirty()) title += " *";
+            if (!title.equals(c.frame.getTitle())) c.frame.setTitle(title);
+        }
+
+        boolean save(boolean saveAs) {
+            if (busy) return false;
+            String name = c.figureName;
+            if (name.isEmpty()) {
+                name = c.promptFigureName(c.frame, "");
+                if (name == null) return false;
+            }
+            File target = file;
+            if (saveAs || target == null) {
+                target = c.chooseSavePath(c.frame, "Save Gelato Project As", "Gelato projects",
+                        "gelato", Controller.safeFigureFilename(name));
+                if (target == null) return false;
+                if (target.exists() && JOptionPane.showConfirmDialog(c.frame,
+                        "Replace this project?\n" + target.getAbsolutePath(), "Save Project",
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.OK_OPTION) return false;
+            }
+            busy = true;
+            c.frame.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+            try {
+                ProjectState state = ProjectState.capture(c);
+                state.put("figure.name", name);
+                state.write(target);
+                file = target.getAbsoluteFile();
+                c.setFigureName(name);
+                savedSignature = signature();
+                updateTitle();
+                c.setStatus("Project saved: " + file.getAbsolutePath());
+                return true;
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(c.frame, "Could not save the project.\n" + ex.getMessage(),
+                        "Save Project", JOptionPane.ERROR_MESSAGE);
+                return false;
+            } finally {
+                busy = false;
+                c.frame.setCursor(java.awt.Cursor.getDefaultCursor());
+            }
+        }
+
+        void open() {
+            if (busy) return;
+            JFileChooser chooser = new JFileChooser();
+            chooser.setDialogTitle("Open Gelato Project");
+            chooser.setFileFilter(new FileNameExtensionFilter("Gelato projects", "gelato"));
+            File directory = c.rememberedImageDirectory();
+            if (directory != null) chooser.setCurrentDirectory(directory);
+            if (chooser.showOpenDialog(c.frame) != JFileChooser.APPROVE_OPTION) return;
+            File selected = chooser.getSelectedFile();
+            busy = true;
+            c.frame.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+            try {
+                final ProjectState state = ProjectState.read(selected);
+                final Controller loaded = state.restore(); // Fully decode before opening any windows.
+                loaded.project.file = selected.getAbsoluteFile();
+                loaded.lastDir = selected.getAbsoluteFile().getParentFile();
+                loaded.showFrame();
+                if (loaded.reconstructionDetailsButton != null) {
+                    loaded.reconstructionDetailsButton.setEnabled(loaded.reconstructionReportText != null);
+                }
+                if (loaded.markerImp != null) loaded.showImageRightHalf(loaded.markerImp);
+                if (loaded.gelImp != null && loaded.gelImp != loaded.markerImp) loaded.showImageRightHalf(loaded.gelImp);
+                loaded.redrawKdaOverlays();
+                loaded.updateActiveMarkerSetLabel();
+                loaded.sourceKdaLabelsButton.setText(loaded.showSourceKdaLabels ? "Hide kDa Labels" : "Show kDa Labels");
+                if (state.bool("workflow.marking")) loaded.activateKdaMode();
+                else loaded.setCropSelectionTool();
+                if (loaded.waitingForCrop) {
+                    loaded.cropButton.setText("Confirm Crop");
+                    loaded.cropButton.setBackground(new Color(255, 180, 0));
+                    loaded.activateGelImage();
+                }
+                SwingUtilities.invokeLater(new Runnable() {
+                    public void run() {
+                        state.restoreViews(loaded);
+                        loaded.project.savedSignature = loaded.project.signature();
+                        loaded.project.updateTitle();
+                        loaded.setStatus("Project opened. Undo/redo history starts here.");
+                    }
+                });
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(c.frame, "Could not open the project.\n" + ex.getMessage(),
+                        "Open Project", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                busy = false;
+                c.frame.setCursor(java.awt.Cursor.getDefaultCursor());
+            }
+        }
+
+        boolean confirmClose() {
+            if (busy) return false;
+            if (!dirty()) return true;
+            String[] options = {"Save Project", "Discard Changes", "Cancel"};
+            int choice = JOptionPane.showOptionDialog(c.frame,
+                    "Save changes to " + (c.figureName.isEmpty() ? "this figure" : c.figureName) + "?",
+                    "Unsaved Project", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                    null, options, options[0]);
+            return choice == 1 || (choice == 0 && save(false));
+        }
+
+        void dispose() {
+            if (timer != null) timer.stop();
+            if (shortcuts != null) KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(shortcuts);
+            if (imageListener != null) ImagePlus.removeImageListener(imageListener);
         }
     }
 

@@ -1,9 +1,10 @@
-# Gelato v1.1.4
+# Gelato v1.1.5
 
 Gelato (former GelAnno or wbtools) is a Fiji/ImageJ plugin for traceable gel-figure assembly and paired kDa values mapping
 Supported input: tif/tiff, png, jpg/jpeg
 
-Version 1.1.4 adds bulk sample-label editing using the existing annotation dialog.
+Version 1.1.5 adds saving the project option.
+
 
 Installation for windows: put gelato-x.x.x.jar file in "plugins" folder of Fiji and enjoy!
 
@@ -19,12 +20,19 @@ Apply changes.
 Works the same in ImageJ if iText module is present (used for PDF export).
 
 
+# Reconstructing the figure for audit
+1. Click "Reconstruct from Log...".
+2. Paste or load a log file ("Load Log..."). 
+3. Click "Reconstruct". 
+4. The program will prompt to load the declared images from the log file one by one. 
+	If the file exists, Gelato preselects that file. Click "Use image" to accept or browse to desired file.
+Gelato will reconstruct the figure alongside annotated copies of the source images. Any warnings will be shown in "Reconstruction details" window.
+More information in How it works.
 
 
+# Creating a figure
 
-
-
-# Basic workflow for separate marker/blot images
+## Basic workflow for separate marker/blot images
 
 1. Click **Open kDa Marker Image...** and choose the ladder/marker (colorimetric) image.
 2. Click each band in the marker image, and enter its label.
@@ -32,62 +40,22 @@ Works the same in ImageJ if iText module is present (used for PDF export).
 4. Select crop for the figure by dragging, then press **Crop Region -> Figure**. The markers are transferred into the crop's local coordinates and included
    in every crop whose vertical range (in crop's local coordinates) contains them.
 
-# Basic workflow for merged marker/blot images
-
+## Basic workflow for merged marker/blot images
 1. Click **Open Gel Image...** and choose the merged image.
 2. Click each band in the marker image, and enter its label.
 3. Click **Stop marking kDa bands**.
 4. Select crop for the figure by dragging, then press **Crop Region -> Figure**. The markers are transferred into the crop's local coordinates and included
    in every crop whose vertical range (in crop's local coordinates) contains them.
 
-# Image reconstruction 
-
-When the crops appear on the canvas, click **Show Coordinate Log** to view, copy, or save the used sources and coordinates. The first time, enter a **figure name**. Gelato remembers this name for the figure session and displays it in the canvas and coordinate-log window titles. Use **Rename Figure...** in the log window to change it. Canceling the naming prompt leaves the log unopened.
-
-New logs use **log format version 2** with a dedicated figure-name field:
-
-```text
-Gelato Coordinate Log
-Figure name: Figure 3B
-Log format version: 2
-Plugin version: 1.1.4
-```
-
-**Save Log** saves to the associated coordinate-log file. When there is no associated file, or when **Save Log As...** is selected, Gelato asks for a figure name (prefilled with the current name) and suggests `figure name.txt`. The file's name can differ from the figure name. Characters unsuitable for filenames are replaced only in the suggested filename; the internal figure name is preserved. Save As requires confirmation before replacing an existing file. After a successful save, ordinary Save Log updates the associated file directly.
-
-The log window displays a snapshot. If the figure changes, a notice says that the log is out of date. Copying or saving offers **Refresh and Copy/Save**, **Copy/Save Displayed Log**, or **Cancel**. Refresh is the default; choosing the displayed log preserves its older coordinates. Renaming a figure updates the name without silently refreshing its coordinates. Additional annotations remain outside the coordinate-log format, including after Refresh.
-
+## Save a coordinate log
 The log is used to reconstruct the figure from declared sources and to highlight the used crops and marked kDa bands. 
-Click "Reconstruct from Log..." and paste or load a log file ("Load Log..."). Click "Reconstruct". The program will prompt to load the declared images from the log file one by one. 
-
-For both required gel images and optional marker-source images, if the logged file exists and is readable, Gelato opens its directory and preselects that file. Click **Use Image** to accept it, or browse to a replacement. Files are not loaded automatically, and the existing dimension checks still apply.
-
-If the logged file is unavailable, the chooser opens the remembered last-used directory with no file selected. The existing **Required Gel image / Optional marker source**, **Expected path**, **Logged dimensions**, and **Used as** information remains unchanged; there is no extra missing-file message. The directory of an accepted image is remembered for later selections. Choosing another image after a load failure or dimension warning keeps the current browsing location instead of resetting to the suggested file.
-
-Relative source paths are checked against the loaded coordinate-log file's folder. For example, `images/blot.tif` in `D:\Review\figure.txt` is looked up at `D:\Review\images\blot.tif`. This lookup does not edit the input log. Pasted logs have no folder against which to resolve relative paths, so those sources use manual selection. Absolute paths can be suggested for both loaded and pasted logs.
-
-After all images are loaded, Gelato reconstructs the figure alongside annotated copies of the source images. The canvas title includes the restored figure name and **Reconstructed from coordinate log**. Source-window titles identify their filename, figure name, role, and position, for example:
-
-```text
-blot_A.tif - Used in Figure 3B - Crops (1/4)
-ladder.tif - Used in Figure 3B - Markers MS-1 (2/4)
-```
-
-The count includes all annotated crop-source and marker-source windows actually opened in that reconstruction. The same file can have separate views for different roles. Renaming the figure updates these titles. Names are shown in window titles; no figure-name text is stamped onto source-image pixels or exported artwork.
-
-**Reconstruction Details** opens in a separate, resizable window so you can inspect and interact with the figure and source images while reading it. **Keep on top** is selected by default on supported systems; turn it off to let other windows cover the report. Use the standard minimize button to fold the report away. Closing it hides the window; **Show Reconstruction Details** in the reconstructed figure's **Figure** section reopens it or restores it from minimized state. The report retains its scroll position and Keep on top choice. Its title follows figure renames, and closing the main figure also closes its report window. The report records the original reconstruction results and warnings; later figure edits do not rewrite it.
-
-On the first **Save Log** after reconstruction from a loaded file, choose **Update Existing Log...**, **Save as New Log...**, or **Cancel**. Saving as new asks for a figure name and a different destination. Updating the existing log requires confirmation before replacement. After a successful save, subsequent saves use the associated file normally. Canceling or a failed save preserves the first-save choice. Reconstruction from pasted text has no associated file, so its first save asks for a name and destination.
-
-Gelato continues to read format v1 and legacy logs. For a log without a figure name, it asks for one before reconstruction and suggests the loaded log's filename without its extension. Pasted unnamed logs start with an empty naming field. Format v2 requires a nonblank figure name on one line. Versions older than 1.1.2 cannot read format v2 logs; retain the original v1 file if older Gelato installations need it.
-
-More information on coordinate log format in How it works.
+1. Click **Show Coordinate Log**.
+2. Name the figure when prompted. 
+3. Click **Save Log** in the bottom.
 
 
-# Adding annotations
-
+## Adding annotations
 After adding at least one crop on the A4 canvas, you can add figure annotations. Annotations are not logged or reconstructed. 
-
 1. **Add sample labels**
 Click anywhere on a crop to put a sample label above.
 2. **Add band ticks**
@@ -97,12 +65,22 @@ Draw horizontal or vertical lines by dragging.
 4. **Edit Annotations**
 Select any annotation exept for kDa markers to move, edit, resize text or delete. 
 
+## Saving and opening projects
+Project saving is separate from coordinate-log saving, and is intended for figure creation editing rather than audit.
+Use Open Project... (**Ctrl+O**), Save Project (**Ctrl+S**), and Save Project As... (**Ctrl+Shift+S**) above the canvas. **Open Project...** opens a separate Gelato window. 
+On the first save, enter a figure name if it has not been set, then choose a `.gelato` file. 
+A project is a self-contained working session. It includes:
+
+- Every canvas crop at its working pixel resolution, its source geometry and provenance, placement, displayed size, and marker mapping.
+- All editable text and line annotations.
+- Marker sets used by the figure and the active unfinished set, including frozen/editable status and the next marker-set number.
+- The current gel and current marker image, when still open: working pixels, stack slices, current slice, and the current ordinary or rotated ImageJ selection. These are the current input slots, at most two images; previously opened source windows and annotated reconstruction copies are not collected.
+
+Image assets are stored losslessly: canvas crop pixels use PNG and current source images use ImageJ TIFF serialization. Saving and reopening adds no JPEG compression. The project preserves the working pixels Gelato currently holds, including existing RGB conversion or image edits; it does not recover information already removed before saving or copy original source files byte for byte. Original paths remain recorded as provenance. You can move the `.gelato` file and reopen it without locating those external sources.
 
 
-# Export
-
+## Export
 Exports the A4 cavnas to PDF. Everything (exept for the raster images) remains vector for publication or further editing. 
-
 When **Use clip groups to group crop bands with their annotations** is selected during PDF export, the Form XObject structure is:
 
 ```text
@@ -119,7 +97,6 @@ Page
 |- Band Names Form
 `- Free H/V line objects
 ```
-
 This keeps every crop, its boundary, its sample labels, and its MW annotations under one PDF graphical object while keeping the band names separate. Illustrator imports the required Form XObject bounds as clipping masks; the symmetric bounds allow MW annotations to move between the left and right sides of a crop without being clipped. Leave the option unchecked to export the original flat structure with independently selectable objects and no band-level clip groups.
 
 
@@ -193,8 +170,8 @@ Maria A. Pirozhkova, Elisheva Babitz. Gelato: an ImageJ/Fiji plugin for traceabl
 - Elisheva Babitz — documentation, user manuals, installation support, testing, user onboarding, and dissemination
 
 
-# Licence
+## Licence
 AGPL-3
 
-# Contact
+## Contact
 pirozhkova@mail.tau.ac.il
